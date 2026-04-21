@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>우주 슈터 2026</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #000;
+    color: #fff;
+    font-family: 'Arial', sans-serif;
+    overflow: hidden;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  canvas { display: block; touch-action: none; }
+
+  #ui {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    z-index: 10;
+  }
+
+  /* 닉네임 화면 */
+  #startScreen {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: radial-gradient(ellipse at center, #0a0a2e 0%, #000005 100%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+  }
+  .title-wrap {
+    text-align: center;
+    margin-bottom: 50px;
+  }
+  .game-title {
+    font-size: clamp(36px, 8vw, 64px);
+    font-weight: 900;
+    letter-spacing: 4px;
+    background: linear-gradient(135deg, #00d4ff, #7b2fff, #ff00c8);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    text-shadow: none;
+    animation: titlePulse 2s ease-in-out infinite;
+    line-height: 1.2;
+  }
+  .game-subtitle {
+    font-size: clamp(12px, 3vw, 18px);
+    color: #8888cc;
+    letter-spacing: 6px;
+    margin-top: 8px;
+    text-transform: uppercase;
+  }
+  @keyframes titlePulse {
+    0%, 100% { filter: brightness(1); }
+    50% { filter: brightness(1.3); }
+  }
+  .choose-text {
+    font-size: clamp(14px, 3.5vw, 20px);
+    color: #aaaadd;
+    margin-bottom: 28px;
+    letter-spacing: 2px;
+  }
+  .nick-buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    width: min(360px, 85vw);
+  }
+  .nick-btn {
+    padding: 18px 10px;
+    font-size: clamp(18px, 5vw, 26px);
+    font-weight: 700;
+    border: 2px solid transparent;
+    border-radius: 16px;
+    cursor: pointer;
+    letter-spacing: 2px;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+    background: rgba(255,255,255,0.05);
+    color: #fff;
+  }
+  .nick-btn::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 14px;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+  .nick-btn:nth-child(1) { border-color: #00d4ff; }
+  .nick-btn:nth-child(1)::before { background: rgba(0,212,255,0.15); }
+  .nick-btn:nth-child(2) { border-color: #ff6b6b; }
+  .nick-btn:nth-child(2)::before { background: rgba(255,107,107,0.15); }
+  .nick-btn:nth-child(3) { border-color: #a8ff78; }
+  .nick-btn:nth-child(3)::before { background: rgba(168,255,120,0.15); }
+  .nick-btn:nth-child(4) { border-color: #f7971e; }
+  .nick-btn:nth-child(4)::before { background: rgba(247,151,30,0.15); }
+  .nick-btn:active::before, .nick-btn:hover::before { opacity: 1; }
+  .nick-btn:active { transform: scale(0.95); }
+
+  /* HUD */
+  #hud {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%;
+    padding: 12px 16px;
+    display: none;
+    z-index: 10;
+    pointer-events: none;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.6), transparent);
+  }
+  #hud.active { display: flex; justify-content: space-between; align-items: flex-start; }
+  .hud-left { display: flex; flex-direction: column; gap: 4px; }
+  .hud-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+  .hud-score {
+    font-size: clamp(22px, 5vw, 32px);
+    font-weight: 900;
+    color: #fff;
+    text-shadow: 0 0 12px #00d4ff;
+  }
+  .hud-best {
+    font-size: clamp(11px, 2.5vw, 15px);
+    color: #f7971e;
+  }
+  .hud-nickname {
+    font-size: clamp(13px, 3vw, 18px);
+    color: #aaaadd;
+    font-weight: 700;
+  }
+  .hud-lives {
+    font-size: clamp(14px, 3vw, 20px);
+    letter-spacing: 2px;
+  }
+
+  /* 게임오버 */
+  #gameOverScreen {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: rgba(0,0,5,0.92);
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+  }
+  #gameOverScreen.active { display: flex; }
+  .go-title {
+    font-size: clamp(32px, 8vw, 56px);
+    font-weight: 900;
+    color: #ff4444;
+    text-shadow: 0 0 20px #ff4444, 0 0 40px #ff4444;
+    letter-spacing: 4px;
+    animation: goFlicker 0.5s ease-in-out infinite alternate;
+    margin-bottom: 20px;
+  }
+  @keyframes goFlicker {
+    from { opacity: 0.9; }
+    to { opacity: 1; filter: brightness(1.3); }
+  }
+  .go-score-wrap {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 16px;
+    padding: 20px 40px;
+    text-align: center;
+    margin-bottom: 24px;
+    width: min(340px, 88vw);
+  }
+  .go-score-label {
+    font-size: 13px;
+    color: #8888cc;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .go-score-value {
+    font-size: clamp(36px, 9vw, 56px);
+    font-weight: 900;
+    background: linear-gradient(135deg, #00d4ff, #7b2fff);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .go-best {
+    font-size: 14px;
+    color: #f7971e;
+    margin-top: 6px;
+  }
+  .leaderboard-wrap {
+    width: min(340px, 88vw);
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 16px;
+    padding: 16px;
+    margin-bottom: 28px;
+  }
+  .lb-title {
+    text-align: center;
+    font-size: 13px;
+    letter-spacing: 3px;
+    color: #f7971e;
+    text-transform: uppercase;
+    margin-bottom: 14px;
+    font-weight: 700;
+  }
+  .lb-row {
+    display: flex;
+    align-items: center;
+    padding: 8px 10px;
+    border-radius: 8px;
+    margin-bottom: 4px;
+    transition: background 0.2s;
+  }
+  .lb-row.highlight { background: rgba(0,212,255,0.12); }
+  .lb-rank {
+    font-size: 14px;
+    font-weight: 900;
+    width: 28px;
+    color: #555;
+  }
+  .lb-rank.gold { color: #ffd700; }
+  .lb-rank.silver { color: #c0c0c0; }
+  .lb-rank.bronze { color: #cd7f32; }
+  .lb-name {
+    flex: 1;
+    font-size: 15px;
+    font-weight: 700;
+    color: #ddd;
+  }
+  .lb-pts {
+    font-size: 15px;
+    font-weight: 900;
+    color: #00d4ff;
+  }
+  .retry-btn {
+    padding: 16px 56px;
+    font-size: clamp(18px, 4.5vw, 24px);
+    font-weight: 900;
+    letter-spacing: 3px;
+    border: 2px solid #00d4ff;
+    border-radius: 50px;
+    background: rgba(0,212,255,0.15);
+    color: #00d4ff;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .retry-btn:active { transform: scale(0.95); background: rgba(0,212,255,0.3); }
+
+  .star-canvas {
+    position: fixed;
+    top: 0; left: 0;
+    pointer-events: none;
+    z-index: 0;
+  }
+</style>
+</head>
+<body>
+
+<!-- 배경 별 캔버스 -->
+<canvas id="starCanvas" class="star-canvas"></canvas>
+
+<!-- 게임 캔버스 -->
+<canvas id="gameCanvas"></canvas>
+
+<!-- HUD -->
+<div id="hud">
+  <div class="hud-left">
+    <div class="hud-nickname" id="hudNickname"></div>
+    <div class="hud-lives" id="hudLives"></div>
+  </div>
+  <div class="hud-right">
+    <div class="hud-score" id="hudScore">0</div>
+    <div class="hud-best" id="hudBest">최고: 0</div>
+  </div>
+</div>
+
+<!-- 닉네임 선택 화면 -->
+<div id="startScreen">
+  <div class="title-wrap">
+    <div class="game-title">🚀 STAR BLAST</div>
+    <div class="game-subtitle">Space Shooter 2026</div>
+  </div>
+  <div class="choose-text">✦ 파일럿을 선택하세요 ✦</div>
+  <div class="nick-buttons">
+    <button class="nick-btn" onclick="selectNick('태형')">태형</button>
+    <button class="nick-btn" onclick="selectNick('상이')">상이</button>
+    <button class="nick-btn" onclick="selectNick('세준')">세준</button>
+    <button class="nick-btn" onclick="selectNick('영근')">영근</button>
+  </div>
+</div>
+
+<!-- 게임오버 화면 -->
+<div id="gameOverScreen">
+  <div class="go-title">GAME OVER</div>
+  <div class="go-score-wrap">
+    <div class="go-score-label">최종 점수</div>
+    <div class="go-score-value" id="goScore">0</div>
+    <div class="go-best" id="goBest"></div>
+  </div>
+  <div class="leaderboard-wrap">
+    <div class="lb-title">🏆 오늘의 TOP 5</div>
+    <div id="leaderboardList"></div>
+  </div>
+  <button class="retry-btn" onclick="retryGame()">다시하기</button>
+</div>
+
+<!-- Supabase -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const _supabase = window.supabase.createClient('https://zypthfexxjcsguycjggr.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5cHRoZmV4eGpjc2d1eWNqZ2dyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3Njc2NzksImV4cCI6MjA5MjM0MzY3OX0.HaC4ltXQrO7_BQCeLqBVtvCBs4wL3Hzy6Ow_mO24vs0');
+
+async function saveScore(nickname, score) {
+  await _supabase.from('scores').insert({
+    game_date: '2026-04-21',
+    nickname: nickname,
+    score: score
+  });
+}
+
+async function getLeaderboard() {
+  const { data } = await _supabase
+    .from('scores')
+    .select('nickname, score')
+    .eq('game_date', '2026-04-21')
+    .order('score', { ascending: false })
+    .limit(5);
+  return data || [];
+}
+</script>
+
+<script>
+// ============================================================
+// 설정
+// ============================================================
+const BEST_KEY = 'best_2026-04-21';
+const GAME_DATE = '2026-04-21';
+
+let W, H;
+const starCanvas = document.getElementById('starCanvas');
+const starCtx = starCanvas.getContext('2d');
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+// ============================================================
+// 게임 상태
+// ============================================================
+let gameState = 'start'; // start | playing | over
+let nickname = '';
+let score = 0;
+let bestScore = 0;
+let lives = 3;
+let level = 1;
+let frameCount = 0;
+let gameRunning = false;
+let animId = null;
+
+// 플레이어
+let player = {};
+// 총알
+let bullets = [];
+// 적
+let enemies = [];
+// 파티클
+let particles = [];
+// 별똥별
+let meteors = [];
+// 파워업
+let powerUps = [];
+// 폭발 플래시
+let flashAlpha = 0;
+// 자동 발사 타이머
+let autoFireTimer = 0;
+// 무적 시간
+let invincible = 0;
+// 연사력 파워업
+let rapidFire = 0;
+// 쉴드
+let shield = 0;
+
+// 터치 위치
+let touchX = -1, touchY = -1;
+let touching = false;
+
+// ============================================================
+// 배경 별 (항상 그려짐)
+// ============================================================
+let bgStars = [];
+function initBgStars() {
+  bgStars = [];
+  for (let i = 0; i < 200; i++) {
+    bgStars.push({
+      x: Math.random() * W,
+      y: Math.random() * H,
+      r: Math.random() * 1.5 + 0.3,
+      speed: Math.random() * 0.6 + 0.1,
+      alpha: Math.random() * 0.7 + 0.3
+    });
+  }
+}
+function drawBgStars() {
+  starCtx.clearRect(0, 0, W, H);
+  bgStars.forEach(s => {
+    s.y += s.speed;
+    if (s.y > H) { s.y = 0; s.x = Math.random() * W; }
+    starCtx.beginPath();
+    starCtx.arc(s.x, s.y, s.r, 0, Math.PI*2);
+    starCtx.fillStyle = `rgba(255,255,255,${s.alpha})`;
+    starCtx.fill();
+  });
+}
+
+// ============================================================
+// 리사이즈
+// ============================================================
+function resize() {
+  W = window.innerWidth;
+  H = window.innerHeight;
+  canvas.width = W;
+  canvas.height = H;
+  starCanvas.width = W;
+  starCanvas.height = H;
+  initBgStars();
+  if (gameState === 'playing') initPlayer();
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ============================================================
+// 플레이어 초기화
+// ============================================================
+function initPlayer() {
+  player = {
+    x: W / 2,
+    y: H - 100,
+    w: 38,
+    h: 44,
+    speed: 5,
+    color: '#00d4ff',
+    trail: []
+  };
+}
+
+// ============================================================
+// 총알 생성
+// ============================================================
+function fireBullet() {
+  const count = rapidFire > 0 ? 3 : 1;
+  if (count === 1) {
+    bullets.push({ x: player.x, y: player.y - player.h/2, w: 5, h: 16, speed: 12, color: '#00ffff', power: 1 });
+  } else {
+    bullets.push({ x: player.x - 14, y: player.y - 20, w: 4, h: 14, speed: 12, color: '#ff00ff', power: 1, vx: -0.5 });
+    bullets.push({ x: player.x, y: player.y - player.h/2, w: 5, h: 16, speed: 14, color: '#ff00ff', power: 1, vx: 0 });
+    bullets.push({ x: player.x + 14, y: player.y - 20, w: 4, h: 14, speed: 12, color: '#ff00ff', power: 1, vx: 0.5 });
+  }
+}
+
+// ============================================================
+// 파티클 생성
+// ============================================================
+function spawnParticles(x, y, color, count) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = Math.random() * 4 + 1;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      r: Math.random() * 4 + 2,
+      alpha: 1,
+      color,
+      decay: Math.random() * 0.03 + 0.02
+    });
+  }
+}
+
+function spawnExplosion(x, y, big) {
+  const colors = ['#ff4444','#ff8800','#ffee00','#ff6600'];
+  const count = big ? 40 : 16;
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = Math.random() * (big ? 7 : 4) + 1;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      r: Math.random() * (big ? 6 : 4) + 2,
+      alpha: 1,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      decay: Math.random() * 0.025 + 0.015
+    });
+  }
+  if (big) flashAlpha = 0.35;
+}
+
+// ============================================================
+// 적 생성
+// ============================================================
+function spawnEnemy() {
+  const types = ['basic', 'fast', 'tank', 'zigzag', 'bomber'];
+  let availableTypes = ['basic'];
+  if (level >= 2) availableTypes.push('fast');
+  if (level >= 3) availableTypes.push('zigzag');
+  if (level >= 4) availableTypes.push('tank');
+  if (level >= 6) availableTypes.push('bomber');
+
+  const type = availableTypes[Math.floor(Math.random() * availableTypes.length)];
+  const x = Math.random() * (W - 60) + 30;
+  const configs = {
+    basic:  { hp: 2, speed: 1.5 + level * 0.15, size: 26, color: '#ff4488', score: 10 },
+    fast:   { hp: 1, speed: 3.0 + level * 0.2,  size: 20, color: '#44ff88', score: 20 },
+    zigzag: { hp: 2, speed: 2.0 + level * 0.15, size: 24, color: '#ff8844', score: 25 },
+    tank:   { hp: 6, speed: 1.0 + level * 0.1,  size: 36, color: '#8844ff', score: 50 },
+    bomber: { hp: 3, speed: 1.8 + level * 0.12, size: 32, color: '#ff2200', score: 40 }
+  };
+  const cfg = configs[type];
+  enemies.push({
+    x, y: -40,
+    w: cfg.size, h: cfg.size,
+    hp: cfg.hp, maxHp: cfg.hp,
+    speed: cfg.speed,
+    color: cfg.color,
+    type,
+    score: cfg.score,
+    t: 0,
+    startX: x,
+    bulletTimer: 0,
+    bullets: []
+  });
+}
+
+// ============================================================
+// 적 총알
+// ============================================================
+function spawnEnemyBullet(e) {
+  const dx = player.x - e.x;
+  const dy = player.y - e.y;
+  const dist = Math.sqrt(dx*dx + dy*dy);
+  const speed = 3 + level * 0.2;
+  e.bullets.push({ x: e.x, y: e.y + e.h/2, vx: (dx/dist)*speed, vy: (dy/dist)*speed, r: 5, alpha: 1 });
+}
+
+// ============================================================
+// 파워업 생성
+// ============================================================
+function spawnPowerUp(x, y) {
+  if (Math.random() > 0.25) return;
+  const types = ['rapid', 'shield', 'life', 'bomb'];
+  const type = types[Math.floor(Math.random() * types.length)];
+  const colors = { rapid: '#ff00ff', shield: '#00aaff', life: '#ff4444', bomb: '#ffee00' };
+  powerUps.push({ x, y, vy: 1.5, r: 14, type, color: colors[type], t: 0 });
+}
+
+// ============================================================
+// 충돌 감지
+// ============================================================
+function rectCircleCollide(rx, ry, rw, rh, cx, cy, cr) {
+  const nearX = Math.max(rx - rw/2, Math.min(cx, rx + rw/2));
+  const nearY = Math.max(ry - rh/2, Math.min(cy, ry + rh/2));
+  const dx = cx - nearX, dy = cy - nearY;
+  return dx*dx + dy*dy < cr*cr;
+}
+function rectsCollide(ax, ay, aw, ah, bx, by, bw, bh) {
+  return ax - aw/2 < bx + bw/2 && ax + aw/2 > bx - bw/2 &&
+         ay - ah/2 < by + bh/2 && ay + ah/2 > by - bh/2;
+}
+
+// ============================================================
+// 게임 초기화
+// ============================================================
+function initGame() {
+  score = 0;
+  lives = 3;
+  level = 1;
+  frameCount = 0;
+  bullets = [];
+  enemies = [];
+  particles = [];
+  meteors = [];
+  powerUps = [];
+  flashAlpha = 0;
+  autoFireTimer = 0;
+  invincible = 0;
+  rapidFire = 0;
+  shield = 0;
+  touching = false;
+  touchX = -1; touchY = -1;
+  initPlayer();
+  updateHUD();
+}
+
+// ============================================================
+// HUD 업데이트
+// ============================================================
+function updateHUD() {
+  document.getElementById('hudScore').textContent = score;
+  document.getElementById('hudBest').textContent = '최고: ' + bestScore;
+  document.getElementById('hudNickname').textContent = '✦ ' + nickname;
+  let livesStr = '';
+  for (let i = 0; i < lives; i++) livesStr += '❤️';
+  for (let i = lives; i < 3; i++) livesStr += '🖤';
+  document.getElementById('hudLives').textContent = livesStr;
+}
+
+// ============================================================
+// 닉네임 선택
+// ============================================================
+function selectNick(name) {
+  nickname = name;
+  bestScore = parseInt(localStorage.getItem(BEST_KEY) || '0');
+  document.getElementById('startScreen').style.display = 'none';
+  document.getElementById('hud').classList.add('active');
+  gameState = 'playing';
+  initGame();
+  gameRunning = true;
+  if (animId) cancelAnimationFrame(animId);
+  gameLoop();
+}
+
+// ============================================================
+// 게임 루프
+// ============================================================
+function gameLoop() {
+  if (!gameRunning) return;
+  update();
+  drawBgStars();
+  draw();
+  animId = requestAnimationFrame(gameLoop);
+}
+
+// ============================================================
+// 업데이트
+// ============================================================
+function update() {
+  frameCount++;
+
+  // 난이도 레벨
+  level = 1 + Math.floor(score / 200);
+  if (level > 15) level = 15;
+
+  // 자동발사
+  const fireRate = rapidFire > 0 ? 6 : 14;
+  autoFireTimer++;
+  if (touching && autoFireTimer >= fireRate) {
+    fireBullet();
+    autoFireTimer = 0;
+  }
+
+  // 플레이어 이동
+  if (touching && touchX >= 0) {
+    const dx = touchX - player.x;
+    const dy = touchY - player.y;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    const speed = 7;
+    if (dist > 5) {
+      player.x += (dx / dist) * Math.min(speed, dist);
+      player.y += (dy / dist) * Math.min(speed, dist);
+    }
+    player.x = Math.max(player.w/2, Math.min(W - player.w/2, player.x));
+    player.y = Math.max(player.h/2, Math.min(H - 20, player.y));
+  }
+
+  // 플레이어 트레일
+  player.trail.unshift({ x: player.x, y: player.y + player.h/2 });
+  if (player.trail.length > 12) player.trail.pop();
+
+  // 타이머
+  if (invincible > 0) invincible--;
+  if (rapidFire > 0) rapidFire--;
+  if (shield > 0) shield--;
+
+  // 총알 이동
+  bullets = bullets.filter(b => b.y > -20);
+  bullets.forEach(b => {
+    b.y -= b.speed;
+    if (b.vx) b.x += b.vx;
+  });
+
+  // 적 스폰
+  const spawnRate = Math.max(20, 70 - level * 4);
+  if (frameCount % spawnRate === 0) spawnEnemy();
+
+  // 적 이동
+  enemies.forEach(e => {
+    e.t++;
+    e.y += e.speed;
+    if (e.type === 'zigzag') e.x = e.startX + Math.sin(e.t * 0.05) * 60;
+    e.x = Math.max(e.w/2, Math.min(W - e.w/2, e.x));
+
+    // 적 총알 (bomber, tank)
+    if (e.type === 'bomber' || e.type === 'tank') {
+      e.bulletTimer++;
+      const bRate = e.type === 'tank' ? 80 : 60;
+      if (e.bulletTimer >= bRate) {
+        spawnEnemyBullet(e);
+        e.bulletTimer = 0;
+      }
+    }
+
+    // 적 총알 이동
+    e.bullets = e.bullets.filter(b => b.y < H + 20 && b.alpha > 0.1);
+    e.bullets.forEach(b => { b.x += b.vx; b.y += b.vy; });
+  });
+
+  // 적 화면 밖
+  enemies = enemies.filter(e => {
+    if (e.y > H + 60) {
+      // 바닥 도달 시 피해
+      takeDamage();
+      spawnParticles(e.x, H - 20, '#ff4444', 8);
+      return false;
+    }
+    return true;
+  });
+
+  // 총알 ↔ 적 충돌
+  bullets.forEach(b => {
+    if (b.dead) return;
+    enemies.forEach(e => {
+      if (e.dead) return;
+      if (rectsCollide(b.x, b.y, b.w, b.h, e.x, e.y, e.w, e.h)) {
+        b.dead = true;
+        e.hp -= b.power;
+        spawnParticles(b.x, b.y, e.color, 5);
+        if (e.hp <= 0) {
+          e.dead = true;
+          spawnExplosion(e.
