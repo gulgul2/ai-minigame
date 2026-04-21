@@ -51,22 +51,12 @@ def update_github_secret(secret_name: str, secret_value: str):
 def send_kakao(access_token: str, title: str, description: str, link: str):
     """카카오 나에게 보내기."""
     template = {
-        "object_type": "feed",
-        "content": {
-            "title": f"🎮 {title}",
-            "description": description,
-            "link": {
-                "web_url": link,
-                "mobile_web_url": link
-            }
-        },
-        "buttons": [{
-            "title": "게임 하러가기",
-            "link": {
-                "web_url": link,
-                "mobile_web_url": link
-            }
-        }]
+        "object_type": "text",
+        "text": f"🎮 오늘의 게임: {title}\n{description}\n\n👉 {link}",
+        "link": {
+            "web_url": link,
+            "mobile_web_url": link
+        }
     }
     data = urllib.parse.urlencode({
         "template_object": json.dumps(template, ensure_ascii=False)
