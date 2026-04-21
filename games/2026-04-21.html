@@ -18,7 +18,7 @@
     justify-content: center;
   }
   canvas { display: block; touch-action: none; }
-  #gameCanvas { position: fixed; top: 0; left: 0; z-index: 2; }
+  #gameCanvas { position: fixed; top: 0; left: 0; z-index: 2; width: 100%; height: 100%; }
 
   #ui {
     position: fixed;
@@ -298,11 +298,19 @@
   <div class="choose-text">✦ 파일럿을 선택하세요 ✦</div>
   <div style="color:#aaa; font-size:13px; margin-top:16px; text-align:center;">화면을 꾹 누른 채 움직이면 조종됩니다</div>
   <div class="nick-buttons">
-    <button class="nick-btn" onclick="selectNick('태형')">태형</button>
-    <button class="nick-btn" onclick="selectNick('상이')">상이</button>
-    <button class="nick-btn" onclick="selectNick('세준')">세준</button>
-    <button class="nick-btn" onclick="selectNick('영근')">영근</button>
+    <button class="nick-btn" onclick="selectNick('태형')" id="btn-태형">태형</button>
+    <button class="nick-btn" onclick="selectNick('상이')" id="btn-상이">상이</button>
+    <button class="nick-btn" onclick="selectNick('세준')" id="btn-세준">세준</button>
+    <button class="nick-btn" onclick="selectNick('영근')" id="btn-영근">영근</button>
   </div>
+  <button id="startBtn" onclick="startGame()" style="
+    display:none; margin-top:32px;
+    padding:18px 60px; font-size:22px; font-weight:900;
+    background:linear-gradient(135deg,#7b7bff,#00d4ff);
+    color:#fff; border:none; border-radius:50px;
+    cursor:pointer; letter-spacing:2px;
+    box-shadow:0 0 30px rgba(123,123,255,0.6);
+  ">🚀 START</button>
 </div>
 
 <!-- 게임오버 화면 -->
@@ -662,6 +670,17 @@ function updateHUD() {
 // ============================================================
 function selectNick(name) {
   nickname = name;
+  // 모든 버튼 선택 해제
+  document.querySelectorAll('.nick-btn').forEach(b => b.style.opacity = '0.4');
+  // 선택한 버튼 강조
+  const btn = document.getElementById('btn-' + name);
+  if (btn) btn.style.opacity = '1';
+  // START 버튼 표시
+  document.getElementById('startBtn').style.display = 'block';
+}
+
+function startGame() {
+  if (!nickname) return;
   bestScore = parseInt(localStorage.getItem(BEST_KEY) || '0');
   document.getElementById('startScreen').style.display = 'none';
   document.getElementById('hud').classList.add('active');
