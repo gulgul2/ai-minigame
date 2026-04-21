@@ -78,7 +78,8 @@ def generate_game(genre: str, theme: str, attempt: int = 1) -> str:
 ## 기술 요구사항
 - 단일 HTML 파일 (CSS/JS 인라인, Supabase CDN 제외 외부 라이브러리 금지)
 - 반드시 포함: <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-- 터치 이벤트 (touchstart/touchmove/touchend) 필수 — 마우스 이벤트도 병행
+- 터치 이벤트 addEventListener('touchstart'), addEventListener('touchmove'), addEventListener('touchend') 반드시 canvas에 등록할 것 — 변수만 선언하고 등록 안 하면 절대 안 됨
+- 마우스 이벤트 addEventListener('mousedown'), addEventListener('mousemove'), addEventListener('mouseup')도 병행 등록
 - localStorage로 개인 최고기록 저장 (key: "best_{TODAY}")
 - 점수는 정수
 
