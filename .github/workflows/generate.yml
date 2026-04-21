@@ -1,0 +1,58 @@
+name: 게임 생성
+
+on:
+  schedule:
+    - cron: "0 22 * * *"  # 매일 22:00 UTC = 07:00 KST
+  workflow_dispatch:        # 수동 실행 가능
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 체크아웃
+        uses: actions/checkout@v4
+
+      - name: Python 설치
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 의존성 설치
+        run: |
+          pip install anthropic playwright
+          playwright install chromium --with-deps
+
+      - name: 게임 생성
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: python3 scripts/generate.py
+
+      - name: 커밋 & 푸시
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add games/ index.html data/used_games.json
+          git diff --cached --quiet || git commit -m "🎮 게임 생성: ${{ env.GAME_TITLE }} (${{ env.GAME_DATE }})"
+          git push
+
+      - name: 실패 알림
+        if: failure()
+        env:
+          KAKAO_REST_KEY: ${{ secrets.KAKAO_REST_KEY }}
+          KAKAO_REFRESH_TOKEN: ${{ secrets.KAKAO_REFRESH_TOKEN }}
+          PAGES_URL: ${{ secrets.PAGES_URL }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 -c "
+          import sys; sys.path.insert(0, 'scripts')
+          from notify import refresh_tokens, send_kakao
+          import os
+          tokens = refresh_tokens(os.environ['KAKAO_REFRESH_TOKEN'])
+          send_kakao(tokens['access_token'], '게임 생성 실패', '오늘 미니게임 자동 생성에 실패했어요. GitHub Actions 확인 필요.', os.environ['PAGES_URL'])
+          "
