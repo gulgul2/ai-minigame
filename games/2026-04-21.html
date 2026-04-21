@@ -18,6 +18,7 @@
     justify-content: center;
   }
   canvas { display: block; touch-action: none; }
+  #gameCanvas { position: fixed; top: 0; left: 0; z-index: 2; }
 
   #ui {
     position: fixed;
@@ -295,6 +296,7 @@
     <div class="game-subtitle">Space Shooter 2026</div>
   </div>
   <div class="choose-text">✦ 파일럿을 선택하세요 ✦</div>
+  <div style="color:#aaa; font-size:13px; margin-top:16px; text-align:center;">화면을 꾹 누른 채 움직이면 조종됩니다</div>
   <div class="nick-buttons">
     <button class="nick-btn" onclick="selectNick('태형')">태형</button>
     <button class="nick-btn" onclick="selectNick('상이')">상이</button>
