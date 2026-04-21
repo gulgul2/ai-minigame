@@ -50,9 +50,10 @@ def update_github_secret(secret_name: str, secret_value: str):
 
 def send_kakao(access_token: str, title: str, description: str, link: str):
     """카카오 나에게 보내기."""
+    leaderboard = link.rsplit("/", 2)[0] + "/leaderboard.html"
     template = {
         "object_type": "text",
-        "text": f"🎮 오늘의 게임: {title}\n{description}\n\n👉 {link}",
+        "text": f"🎮 오늘의 게임: {title}\n{description}\n\n👉 게임: {link}\n🏆 전적: {leaderboard}",
         "link": {
             "web_url": link,
             "mobile_web_url": link

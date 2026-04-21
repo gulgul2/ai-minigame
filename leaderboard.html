@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>전적 — AI 미니게임</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#0a0a14; color:#eee; font-family:-apple-system,sans-serif; padding:24px 16px 60px; }
+h1 { color:#fff; font-size:22px; font-weight:900; margin-bottom:4px; }
+.sub { color:#666; font-size:13px; margin-bottom:28px; }
+.day { background:#111827; border:1px solid #1e293b; border-radius:14px; padding:16px; margin-bottom:14px; }
+.day-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
+.day-date { color:#7b7bff; font-size:13px; font-weight:700; }
+.day-title { color:#fff; font-size:16px; font-weight:900; }
+.row { display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid #1e293b; }
+.row:last-child { border-bottom:none; }
+.rank { font-size:18px; width:32px; }
+.name { color:#eee; font-size:15px; font-weight:700; flex:1; }
+.score { color:#7b7bff; font-size:15px; font-weight:900; }
+.empty { color:#444; font-size:14px; text-align:center; padding:12px 0; }
+#loading { color:#555; text-align:center; padding:60px 0; font-size:15px; }
+</style>
+</head>
+<body>
+<h1>🏆 전적 기록</h1>
+<p class="sub">태형 · 상이 · 세준 · 영근</p>
+<div id="content"><div id="loading">불러오는 중...</div></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SB = window.supabase.createClient(
+  'https://zypthfexxjcsguycjggr.supabase.co',
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5cHRoZmV4eGpjc2d1eWNqZ2dyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3Njc2NzksImV4cCI6MjA5MjM0MzY3OX0.HaC4ltXQrO7_BQCeLqBVtvCBs4wL3Hzy6Ow_mO24vs0'
+);
+
+const MEDALS = ['🥇','🥈','🥉','4️⃣','5️⃣'];
+
+async function load() {
+  // 점수 전체
+  const { data: scores, error } = await SB
+    .from('scores')
+    .select('game_date, nickname, score')
+    .order('game_date', { ascending: false })
+    .order('score',     { ascending: false });
+
+  if (error || !scores) {
+    document.getElementById('content').innerHTML = '<p class="empty">데이터를 불러올 수 없습니다.</p>';
+    return;
+  }
+
+  // 게임 목록 (used_games.json에서 제목 가져오기)
+  let gameTitles = {};
+  try {
+    const res = await fetch('data/used_games.json');
+    const games = await res.json();
+    games.forEach(g => { gameTitles[g.date] = g.title; });
+  } catch(e) {}
+
+  // 날짜별로 그룹핑 (날짜당 닉네임별 최고점만)
+  const byDate = {};
+  scores.forEach(s => {
+    if (!byDate[s.game_date]) byDate[s.game_date] = {};
+    if (!byDate[s.game_date][s.nickname] || byDate[s.game_date][s.nickname] < s.score) {
+      byDate[s.game_date][s.nickname] = s.score;
+    }
+  });
+
+  const dates = Object.keys(byDate).sort().reverse();
+
+  if (dates.length === 0) {
+    document.getElementById('content').innerHTML = '<p class="empty">아직 기록이 없어요.</p>';
+    return;
+  }
+
+  let html = '';
+  dates.forEach(date => {
+    const title = gameTitles[date] || '미니게임';
+    const rows = Object.entries(byDate[date])
+      .sort((a,b) => b[1]-a[1])
+      .slice(0, 5);
+
+    html += `
+    <div class="day">
+      <div class="day-header">
+        <div>
+          <div class="day-date">${date}</div>
+          <div class="day-title"><a href="games/${date}.html" style="color:#fff;text-decoration:none;">▶ ${title}</a></div>
+        </div>
+      </div>
+      ${rows.map(([name, score], i) => `
+        <div class="row">
+          <span class="rank">${MEDALS[i]}</span>
+          <span class="name">${name}</span>
+          <span class="score">${score.toLocaleString()}점</span>
+        </div>
+      `).join('')}
+    </div>`;
+  });
+
+  document.getElementById('content').innerHTML = html;
+}
+
+load();
+</script>
+</body>
+</html>
