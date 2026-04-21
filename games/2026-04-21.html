@@ -439,6 +439,46 @@ function resize() {
 window.addEventListener('resize', resize);
 resize();
 
+// 터치 이벤트
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  const t = e.touches[0];
+  const rect = canvas.getBoundingClientRect();
+  touching = true;
+  touchX = t.clientX - rect.left;
+  touchY = t.clientY - rect.top;
+}, { passive: false });
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  const t = e.touches[0];
+  const rect = canvas.getBoundingClientRect();
+  touchX = t.clientX - rect.left;
+  touchY = t.clientY - rect.top;
+}, { passive: false });
+canvas.addEventListener('touchend', e => {
+  e.preventDefault();
+  touching = false;
+  touchX = -1; touchY = -1;
+}, { passive: false });
+
+// 마우스 이벤트 (PC)
+canvas.addEventListener('mousedown', e => {
+  const rect = canvas.getBoundingClientRect();
+  touching = true;
+  touchX = e.clientX - rect.left;
+  touchY = e.clientY - rect.top;
+});
+canvas.addEventListener('mousemove', e => {
+  if (!touching) return;
+  const rect = canvas.getBoundingClientRect();
+  touchX = e.clientX - rect.left;
+  touchY = e.clientY - rect.top;
+});
+canvas.addEventListener('mouseup', () => {
+  touching = false;
+  touchX = -1; touchY = -1;
+});
+
 // ============================================================
 // 플레이어 초기화
 // ============================================================
