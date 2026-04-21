@@ -3,738 +3,309 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>숲의 수호자</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script>
-const _supabase = window.supabase.createClient('https://zypthfexxjcsguycjggr.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5cHRoZmV4eGpjc2d1eWNqZ2dyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3Njc2NzksImV4cCI6MjA5MjM0MzY3OX0.HaC4ltXQrO7_BQCeLqBVtvCBs4wL3Hzy6Ow_mO24vs0');
-
-async function saveScore(nickname, score) {
-  await _supabase.from('scores').insert({
-    game_date: '2026-04-21',
-    nickname: nickname,
-    score: score
-  });
-}
-
-async function getLeaderboard() {
-  const { data } = await _supabase
-    .from('scores')
-    .select('nickname, score')
-    .eq('game_date', '2026-04-21')
-    .order('score', { ascending: false })
-    .limit(5);
-  return data || [];
-}
-</script>
+<title>우주 슈터 2026</title>
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    background: #0a1a0a;
-    font-family: 'Arial', sans-serif;
-    overflow: hidden;
-    width: 100vw;
-    height: 100vh;
-    touch-action: none;
-  }
-  canvas {
-    position: fixed;
-    top: 0;
-    left: 0;
-    z-index: 2;
-    display: block;
-  }
-
-  /* NICKNAME SCREEN */
-  #nicknameScreen {
-    position: fixed;
-    top: 0; left: 0;
-    width: 100%; height: 100%;
-    z-index: 10;
-    background: linear-gradient(180deg, #0a2a0a 0%, #1a4a1a 40%, #0d3a0d 100%);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 0;
-  }
-  .forest-deco {
-    position: absolute;
-    bottom: 0; left: 0;
-    width: 100%; height: 200px;
-    overflow: hidden;
-  }
-  .tree {
-    position: absolute;
-    bottom: 0;
-  }
-  .tree-trunk {
-    background: #3d2b1f;
-    margin: 0 auto;
-  }
-  .tree-top {
-    width: 0; height: 0;
-    border-left: solid transparent;
-    border-right: solid transparent;
-    border-bottom: solid #1a5c1a;
-    margin: 0 auto;
-    position: relative;
-  }
-  .tree-top2 {
-    width: 0; height: 0;
-    border-left: solid transparent;
-    border-right: solid transparent;
-    border-bottom: solid #226622;
-    margin: 0 auto;
-    position: relative;
-    top: -10px;
-  }
-  #gameTitle {
-    font-size: 42px;
-    font-weight: 900;
-    color: #7fff7f;
-    text-shadow: 0 0 20px #00ff44, 0 0 40px #00aa22;
-    letter-spacing: 2px;
-    text-align: center;
-    margin-bottom: 8px;
-    z-index: 1;
-    animation: titlePulse 2s ease-in-out infinite;
-  }
-  @keyframes titlePulse {
-    0%,100% { text-shadow: 0 0 20px #00ff44, 0 0 40px #00aa22; }
-    50% { text-shadow: 0 0 30px #00ff44, 0 0 60px #00ff44, 0 0 80px #00aa22; }
-  }
-  #gameSubtitle {
-    font-size: 16px;
-    color: #88cc88;
-    margin-bottom: 50px;
-    z-index: 1;
-    letter-spacing: 3px;
-  }
-  #selectLabel {
-    font-size: 18px;
-    color: #aaddaa;
-    margin-bottom: 20px;
-    z-index: 1;
-  }
-  #nicknameButtons {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 16px;
-    z-index: 1;
-    padding: 0 40px;
-    width: 100%;
-    max-width: 400px;
-  }
-  .nickBtn {
-    padding: 18px 10px;
-    font-size: 20px;
-    font-weight: 700;
-    border: 2px solid #44aa44;
-    border-radius: 16px;
-    background: linear-gradient(135deg, #0d3a0d, #1a5c1a);
-    color: #aaffaa;
-    cursor: pointer;
-    transition: all 0.15s;
-    box-shadow: 0 4px 15px rgba(0,200,0,0.2), inset 0 1px 0 rgba(255,255,255,0.1);
-    position: relative;
-    overflow: hidden;
-  }
-  .nickBtn::before {
-    content: '';
-    position: absolute;
-    top: -50%; left: -50%;
-    width: 200%; height: 200%;
-    background: radial-gradient(circle, rgba(0,255,0,0.15) 0%, transparent 70%);
-    opacity: 0;
-    transition: opacity 0.3s;
-  }
-  .nickBtn:active::before { opacity: 1; }
-  .nickBtn:active {
-    transform: scale(0.95);
-    background: linear-gradient(135deg, #1a5c1a, #2a8a2a);
-    box-shadow: 0 2px 8px rgba(0,200,0,0.4);
-  }
-  .nickEmoji {
-    display: block;
-    font-size: 28px;
-    margin-bottom: 4px;
-  }
-
-  /* GAME OVER SCREEN */
-  #gameoverScreen {
-    position: fixed;
-    top: 0; left: 0;
-    width: 100%; height: 100%;
-    z-index: 10;
-    background: rgba(0,0,0,0.88);
-    display: none;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 0;
-  }
-  #gameoverTitle {
-    font-size: 48px;
-    font-weight: 900;
-    color: #ff4444;
-    text-shadow: 0 0 20px #ff0000;
-    margin-bottom: 10px;
-    animation: shake 0.5s ease-in-out;
-  }
-  @keyframes shake {
-    0%,100%{transform:translateX(0)}
-    20%{transform:translateX(-8px)}
-    40%{transform:translateX(8px)}
-    60%{transform:translateX(-6px)}
-    80%{transform:translateX(6px)}
-  }
-  #scoreDisplay {
-    font-size: 28px;
-    color: #ffffff;
-    margin-bottom: 6px;
-  }
-  #bestDisplay {
-    font-size: 18px;
-    color: #ffdd44;
-    margin-bottom: 30px;
-  }
-  #leaderboardBox {
-    background: rgba(0,30,0,0.8);
-    border: 1px solid #33aa33;
-    border-radius: 16px;
-    padding: 20px 30px;
-    width: 85%;
-    max-width: 360px;
-    margin-bottom: 30px;
-  }
-  #leaderboardTitle {
-    font-size: 16px;
-    color: #88ff88;
-    text-align: center;
-    margin-bottom: 14px;
-    letter-spacing: 2px;
-    font-weight: 700;
-  }
-  .lbRow {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 7px 0;
-    border-bottom: 1px solid rgba(0,150,0,0.2);
-    font-size: 16px;
-    color: #ccffcc;
-  }
-  .lbRow:last-child { border-bottom: none; }
-  .lbRank { color: #ffaa44; font-weight: 700; width: 30px; }
-  .lbName { flex: 1; padding-left: 8px; }
-  .lbScore { color: #88ffaa; font-weight: 700; }
-  .lbRow.myRow { color: #ffff88; background: rgba(255,255,0,0.05); border-radius: 6px; padding: 7px 4px; }
-  #restartBtn {
-    padding: 18px 60px;
-    font-size: 22px;
-    font-weight: 700;
-    border: none;
-    border-radius: 50px;
-    background: linear-gradient(135deg, #1a7a1a, #33cc33);
-    color: white;
-    cursor: pointer;
-    box-shadow: 0 6px 20px rgba(0,200,0,0.4);
-    transition: all 0.15s;
-    letter-spacing: 1px;
-  }
-  #restartBtn:active {
-    transform: scale(0.95);
-    box-shadow: 0 3px 10px rgba(0,200,0,0.3);
-  }
-  #loadingMsg {
-    font-size: 14px;
-    color: #66aa66;
-    margin-top: 12px;
-  }
-
-  /* HUD */
-  #hud {
-    position: fixed;
-    top: 0; left: 0;
-    width: 100%; height: 60px;
-    z-index: 5;
-    display: none;
-    pointer-events: none;
-    padding: 10px 16px;
-    align-items: center;
-    justify-content: space-between;
-  }
-  #hudLeft { text-align: left; }
-  #hudRight { text-align: right; }
-  #scoreHud {
-    font-size: 26px;
-    font-weight: 900;
-    color: #ffffff;
-    text-shadow: 0 0 10px rgba(0,255,0,0.5);
-  }
-  #bestHud {
-    font-size: 13px;
-    color: #aaffaa;
-    margin-top: 2px;
-  }
-  #livesHud {
-    font-size: 22px;
-    letter-spacing: 3px;
-  }
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#000; overflow:hidden; font-family:-apple-system,sans-serif; }
+canvas { position:fixed; top:0; left:0; width:100%; height:100%; z-index:1; touch-action:none; }
+#overlay {
+  position:fixed; top:0; left:0; width:100%; height:100%;
+  z-index:10; display:flex; flex-direction:column;
+  align-items:center; justify-content:center;
+  background:radial-gradient(ellipse at center, #0a0a2e 0%, #000 100%);
+}
+#overlay h1 { color:#fff; font-size:clamp(28px,7vw,48px); font-weight:900; letter-spacing:2px; margin-bottom:8px; }
+#overlay p { color:#aaa; font-size:14px; margin-bottom:40px; }
+.nick-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:28px; width:min(320px,80vw); }
+.nick-btn {
+  padding:16px 28px; font-size:18px; font-weight:700; color:#fff;
+  background:rgba(255,255,255,0.05); border:2px solid rgba(255,255,255,0.2);
+  border-radius:14px; cursor:pointer; transition:all .2s;
+}
+.nick-btn.selected { border-color:#7b7bff; background:rgba(123,123,255,0.2); color:#7b7bff; }
+#startBtn {
+  display:none; padding:16px 56px; font-size:20px; font-weight:900;
+  background:linear-gradient(135deg,#7b7bff,#00d4ff); color:#fff;
+  border:none; border-radius:50px; cursor:pointer;
+  box-shadow:0 0 30px rgba(123,123,255,0.5);
+}
+#hud {
+  position:fixed; top:0; left:0; width:100%; padding:14px 20px;
+  display:none; justify-content:space-between; align-items:center;
+  z-index:5; background:linear-gradient(to bottom,rgba(0,0,0,.6),transparent);
+  pointer-events:none;
+}
+#hud.on { display:flex; }
+#hud span { color:#fff; font-size:16px; font-weight:700; }
+#hud .score { font-size:24px; }
+#gameover {
+  position:fixed; top:0; left:0; width:100%; height:100%;
+  z-index:10; display:none; flex-direction:column;
+  align-items:center; justify-content:center;
+  background:rgba(0,0,0,.85);
+}
+#gameover.on { display:flex; }
+#gameover h2 { color:#fff; font-size:clamp(28px,8vw,48px); font-weight:900; margin-bottom:8px; }
+#gameover .myscore { color:#7b7bff; font-size:clamp(20px,5vw,32px); margin-bottom:28px; }
+#board { color:#eee; font-size:15px; margin-bottom:28px; line-height:2; text-align:center; }
+#retryBtn {
+  padding:14px 48px; font-size:18px; font-weight:900;
+  background:linear-gradient(135deg,#7b7bff,#00d4ff); color:#fff;
+  border:none; border-radius:50px; cursor:pointer;
+}
 </style>
 </head>
 <body>
 
-<!-- NICKNAME SCREEN -->
-<div id="nicknameScreen">
-  <div id="gameTitle">🌲 숲의 수호자</div>
-  <div id="gameSubtitle">FOREST GUARDIAN</div>
-  <div id="selectLabel">플레이어를 선택하세요</div>
-  <div id="nicknameButtons">
-    <button class="nickBtn" onclick="startGame('태형')">
-      <span class="nickEmoji">🦅</span>태형
-    </button>
-    <button class="nickBtn" onclick="startGame('상이')">
-      <span class="nickEmoji">🌿</span>상이
-    </button>
-    <button class="nickBtn" onclick="startGame('세준')">
-      <span class="nickEmoji">⚡</span>세준
-    </button>
-    <button class="nickBtn" onclick="startGame('영근')">
-      <span class="nickEmoji">🔥</span>영근
-    </button>
+<canvas id="c"></canvas>
+
+<div id="overlay">
+  <h1>🚀 우주 슈터 2026</h1>
+  <p>화면을 누른 채 움직이면 조종됩니다</p>
+  <div class="nick-grid">
+    <button class="nick-btn" onclick="pick('태형')">태형</button>
+    <button class="nick-btn" onclick="pick('상이')">상이</button>
+    <button class="nick-btn" onclick="pick('세준')">세준</button>
+    <button class="nick-btn" onclick="pick('영근')">영근</button>
   </div>
-  <div class="forest-deco" id="forestDeco"></div>
+  <button id="startBtn" onclick="startGame()">🚀 START</button>
 </div>
 
-<!-- HUD -->
 <div id="hud">
-  <div id="hudLeft">
-    <div id="scoreHud">0</div>
-    <div id="bestHud">최고: 0</div>
-  </div>
-  <div id="hudRight">
-    <div id="livesHud">❤️❤️❤️</div>
-  </div>
+  <span id="nickLabel"></span>
+  <span class="score" id="scoreLabel">0</span>
+  <span id="livesLabel">❤️❤️❤️</span>
 </div>
 
-<!-- CANVAS -->
-<canvas id="gameCanvas"></canvas>
-
-<!-- GAMEOVER SCREEN -->
-<div id="gameoverScreen">
-  <div id="gameoverTitle">GAME OVER</div>
-  <div id="scoreDisplay">점수: 0</div>
-  <div id="bestDisplay">🏆 최고기록: 0</div>
-  <div id="leaderboardBox">
-    <div id="leaderboardTitle">🌲 오늘의 TOP 5</div>
-    <div id="leaderboardList"></div>
-  </div>
-  <button id="restartBtn" onclick="goHome()">다시하기</button>
-  <div id="loadingMsg">리더보드 불러오는 중...</div>
+<div id="gameover">
+  <h2>GAME OVER</h2>
+  <div class="myscore" id="myScoreLabel"></div>
+  <div id="board">리더보드 불러오는 중...</div>
+  <button id="retryBtn" onclick="retry()">다시하기</button>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
-// ========================
-// GAME STATE
-// ========================
-const canvas = document.getElementById('gameCanvas');
+const SB = window.supabase.createClient(
+  'https://zypthfexxjcsguycjggr.supabase.co',
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5cHRoZmV4eGpjc2d1eWNqZ2dyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3Njc2NzksImV4cCI6MjA5MjM0MzY3OX0.HaC4ltXQrO7_BQCeLqBVtvCBs4wL3Hzy6Ow_mO24vs0'
+);
+const GAME_DATE = '2026-04-21';
+
+const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
-
 let W, H;
-let gameState = 'nickname'; // nickname, playing, gameover
-let nickname = '';
-let score = 0;
-let bestScore = 0;
-let lives = 3;
-let frameCount = 0;
-let animId = null;
-let gameRunning = false;
-
-const BEST_KEY = 'best_2026-04-21';
-
-function resize() {
-  W = canvas.width = window.innerWidth;
-  H = canvas.height = window.innerHeight;
-}
-resize();
+function resize() { W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; }
 window.addEventListener('resize', resize);
+resize();
 
-// ========================
-// GAME OBJECTS
-// ========================
-let player = {};
-let bullets = [];
-let enemies = [];
-let particles = [];
-let stars = [];
-let trees = [];
-let powerups = [];
-let explosions = [];
+let nickname = '', score = 0, lives = 3, running = false, raf = null, frame = 0;
+let player, bullets, enemies, particles, stars;
+let tx = -1, ty = -1, touching = false, fireTimer = 0;
 
-// Input state
-let inputState = { x: 0, y: 0, shooting: false, active: false };
-let autoShootInterval = null;
+canvas.addEventListener('touchstart',  e => { e.preventDefault(); const t=e.touches[0]; touching=true; tx=t.clientX; ty=t.clientY; }, {passive:false});
+canvas.addEventListener('touchmove',   e => { e.preventDefault(); const t=e.touches[0]; tx=t.clientX; ty=t.clientY; }, {passive:false});
+canvas.addEventListener('touchend',    e => { e.preventDefault(); touching=false; tx=-1; ty=-1; }, {passive:false});
+canvas.addEventListener('mousedown',   e => { touching=true; tx=e.clientX; ty=e.clientY; });
+canvas.addEventListener('mousemove',   e => { if(touching){ tx=e.clientX; ty=e.clientY; } });
+canvas.addEventListener('mouseup',     () => { touching=false; tx=-1; ty=-1; });
 
-// Difficulty
-let difficultyLevel = 1;
-let enemySpawnRate = 120;
-let enemySpeed = 1.2;
-let bossActive = false;
-let bossEnemy = null;
-let nextBossScore = 500;
-
-// ========================
-// PARTICLE SYSTEM
-// ========================
-function spawnParticles(x, y, color, count, spread) {
-  for (let i = 0; i < count; i++) {
-    const angle = Math.random() * Math.PI * 2;
-    const speed = 1 + Math.random() * spread;
-    particles.push({
-      x, y,
-      vx: Math.cos(angle) * speed,
-      vy: Math.sin(angle) * speed,
-      life: 1,
-      decay: 0.04 + Math.random() * 0.04,
-      size: 2 + Math.random() * 4,
-      color
-    });
-  }
+function pick(name) {
+  nickname = name;
+  document.querySelectorAll('.nick-btn').forEach(b => b.classList.remove('selected'));
+  document.querySelector(`.nick-btn[onclick="pick('${name}')"]`).classList.add('selected');
+  document.getElementById('startBtn').style.display = 'block';
 }
 
-function spawnLeafParticles(x, y) {
-  const colors = ['#44ff44','#22cc22','#88ff44','#ffff44','#aaff88'];
-  spawnParticles(x, y, colors[Math.floor(Math.random()*colors.length)], 8, 3);
+function init() {
+  score = 0; lives = 3; frame = 0; fireTimer = 0;
+  player = { x: W/2, y: H-100, r: 20, speed: 6 };
+  bullets = []; enemies = []; particles = [];
+  stars = Array.from({length:80}, () => ({
+    x: Math.random()*W, y: Math.random()*H,
+    s: Math.random()*2+.5, v: Math.random()*1.5+.5
+  }));
+  document.getElementById('scoreLabel').textContent = '0';
+  document.getElementById('livesLabel').textContent = '❤️❤️❤️';
+  document.getElementById('nickLabel').textContent  = '✦ ' + nickname;
 }
 
-function spawnExplosion(x, y, big) {
-  const colors = ['#ff8800','#ff4400','#ffdd00','#ff2200','#ffffff'];
-  const count = big ? 20 : 10;
-  const spread = big ? 5 : 3;
-  for(let i=0;i<count;i++){
-    const angle = Math.random()*Math.PI*2;
-    const speed = 1+Math.random()*spread;
-    explosions.push({
-      x,y,
-      vx:Math.cos(angle)*speed,
-      vy:Math.sin(angle)*speed,
-      life:1,
-      decay: 0.03+Math.random()*0.03,
-      size: big ? 4+Math.random()*6 : 2+Math.random()*4,
-      color: colors[Math.floor(Math.random()*colors.length)]
-    });
-  }
+function startGame() {
+  if (!nickname) return;
+  document.getElementById('overlay').style.display = 'none';
+  document.getElementById('gameover').classList.remove('on');
+  document.getElementById('hud').classList.add('on');
+  init();
+  running = true;
+  if (raf) cancelAnimationFrame(raf);
+  loop();
 }
 
-// ========================
-// INIT GAME
-// ========================
-function initGame() {
-  score = 0;
-  lives = 3;
-  frameCount = 0;
-  difficultyLevel = 1;
-  enemySpawnRate = 120;
-  enemySpeed = 1.2;
-  bossActive = false;
-  bossEnemy = null;
-  nextBossScore = 500;
-
-  bullets = [];
-  enemies = [];
-  particles = [];
-  explosions = [];
-  powerups = [];
-
-  // Generate background trees
-  trees = [];
-  for(let i=0;i<12;i++){
-    trees.push({
-      x: Math.random()*W,
-      y: H*0.3 + Math.random()*H*0.5,
-      scale: 0.5+Math.random()*0.8,
-      sway: Math.random()*Math.PI*2,
-      swaySpeed: 0.01+Math.random()*0.01
-    });
-  }
-
-  // Generate stars (background)
-  stars = [];
-  for(let i=0;i<30;i++){
-    stars.push({
-      x: Math.random()*W,
-      y: Math.random()*H*0.4,
-      r: 0.5+Math.random()*1.5,
-      twinkle: Math.random()*Math.PI*2
-    });
-  }
-
-  // Player
-  player = {
-    x: W/2,
-    y: H - 120,
-    w: 36,
-    h: 44,
-    speed: 5,
-    shootCooldown: 0,
-    shootRate: 15,
-    powerLevel: 1,
-    powerTimer: 0,
-    invincible: 0,
-    trail: []
-  };
-
-  inputState = { x: W/2, y: H-120, shooting: false, active: false };
-
-  // Auto shoot
-  if(autoShootInterval) clearInterval(autoShootInterval);
+function retry() {
+  document.getElementById('gameover').classList.remove('on');
+  document.getElementById('hud').classList.add('on');
+  init();
+  running = true;
+  if (raf) cancelAnimationFrame(raf);
+  loop();
 }
 
-// ========================
-// PLAYER DRAW
-// ========================
-function drawPlayer() {
-  if(player.invincible > 0 && Math.floor(frameCount/4)%2===0) return;
-
-  ctx.save();
-  ctx.translate(player.x, player.y);
-
-  // Trail effect
-  player.trail.forEach((t, i) => {
-    const alpha = (i/player.trail.length)*0.3;
-    ctx.beginPath();
-    ctx.arc(t.x - player.x, t.y - player.y, 8, 0, Math.PI*2);
-    ctx.fillStyle = `rgba(0,255,100,${alpha})`;
-    ctx.fill();
-  });
-
-  // Body (leaf-shaped spacecraft)
-  ctx.beginPath();
-  ctx.ellipse(0, 0, 14, 20, 0, 0, Math.PI*2);
-  ctx.fillStyle = player.powerLevel >= 2 ? '#22ddff' : '#33ee66';
-  ctx.fill();
-  ctx.strokeStyle = player.powerLevel >= 2 ? '#ffffff' : '#aaffcc';
-  ctx.lineWidth = 2;
-  ctx.stroke();
-
-  // Wings
-  ctx.beginPath();
-  ctx.moveTo(-14, 8);
-  ctx.lineTo(-28, 18);
-  ctx.lineTo(-10, 12);
-  ctx.fillStyle = player.powerLevel >= 2 ? '#11aacc' : '#22cc55';
-  ctx.fill();
-
-  ctx.beginPath();
-  ctx.moveTo(14, 8);
-  ctx.lineTo(28, 18);
-  ctx.lineTo(10, 12);
-  ctx.fillStyle = player.powerLevel >= 2 ? '#11aacc' : '#22cc55';
-  ctx.fill();
-
-  // Cockpit
-  ctx.beginPath();
-  ctx.ellipse(0, -6, 7, 9, 0, 0, Math.PI*2);
-  ctx.fillStyle = 'rgba(100,255,200,0.6)';
-  ctx.fill();
-
-  // Engine glow
-  const grd = ctx.createRadialGradient(0, 16, 0, 0, 16, 14);
-  grd.addColorStop(0, 'rgba(0,255,100,0.9)');
-  grd.addColorStop(1, 'rgba(0,255,100,0)');
-  ctx.beginPath();
-  ctx.arc(0, 16, 14, 0, Math.PI*2);
-  ctx.fillStyle = grd;
-  ctx.fill();
-
-  ctx.restore();
+function loop() {
+  if (!running) return;
+  update();
+  draw();
+  raf = requestAnimationFrame(loop);
 }
 
-// ========================
-// BULLET
-// ========================
-function fireBullet() {
-  if(player.shootCooldown > 0) return;
-  player.shootCooldown = player.shootRate;
+function update() {
+  frame++;
+  stars.forEach(s => { s.y += s.v; if(s.y>H){ s.y=0; s.x=Math.random()*W; } });
 
-  if(player.powerLevel === 1) {
-    bullets.push({ x: player.x, y: player.y-22, vx: 0, vy: -12, r: 5, type:'player', color:'#00ff88' });
-  } else if(player.powerLevel === 2) {
-    bullets.push({ x: player.x-8, y: player.y-16, vx: -1, vy: -11, r: 5, type:'player', color:'#00ffff' });
-    bullets.push({ x: player.x+8, y: player.y-16, vx: 1, vy: -11, r: 5, type:'player', color:'#00ffff' });
-  } else {
-    bullets.push({ x: player.x, y: player.y-22, vx: 0, vy: -13, r: 6, type:'player', color:'#ffff00' });
-    bullets.push({ x: player.x-12, y: player.y-14, vx: -1.5, vy: -11, r: 4, type:'player', color:'#ffff00' });
-    bullets.push({ x: player.x+12, y: player.y-14, vx: 1.5, vy: -11, r: 4, type:'player', color:'#ffff00' });
-  }
-}
-
-function drawBullets() {
-  bullets.forEach(b => {
-    if(b.type === 'player') {
-      const grd = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.r*2);
-      grd.addColorStop(0, b.color);
-      grd.addColorStop(1, 'rgba(0,255,100,0)');
-      ctx.beginPath();
-      ctx.arc(b.x, b.y, b.r*2, 0, Math.PI*2);
-      ctx.fillStyle = grd;
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(b.x, b.y, b.r, 0, Math.PI*2);
-      ctx.fillStyle = '#ffffff';
-      ctx.fill();
-    } else {
-      // enemy bullet
-      const grd = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.r*2);
-      grd.addColorStop(0, '#ff4400');
-      grd.addColorStop(1, 'rgba(255,50,0,0)');
-      ctx.beginPath();
-      ctx.arc(b.x, b.y, b.r*2, 0, Math.PI*2);
-      ctx.fillStyle = grd;
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(b.x, b.y, b.r, 0, Math.PI*2);
-      ctx.fillStyle = '#ffaa00';
-      ctx.fill();
+  if (touching && tx >= 0) {
+    const dx = tx - player.x, dy = ty - player.y;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    if (dist > 4) {
+      player.x += (dx/dist) * Math.min(player.speed, dist);
+      player.y += (dy/dist) * Math.min(player.speed, dist);
     }
+    player.x = Math.max(player.r, Math.min(W-player.r, player.x));
+    player.y = Math.max(player.r, Math.min(H-player.r, player.y));
+  }
+
+  if (touching) fireTimer++; else fireTimer = 15;
+  if (touching && fireTimer >= 15) {
+    bullets.push({ x: player.x, y: player.y - player.r, vy: -12 });
+    fireTimer = 0;
+  }
+
+  bullets = bullets.filter(b => { b.y += b.vy; return b.y > -10; });
+
+  const spawnRate = Math.max(28, 60 - Math.floor(score/100)*3);
+  if (frame % spawnRate === 0) {
+    const cols = Math.min(3, 1 + Math.floor(score/200));
+    for (let i=0; i<cols; i++) {
+      enemies.push({
+        x: 40 + Math.random()*(W-80), y: -20,
+        r: 18 + Math.random()*8,
+        vx: (Math.random()-.5)*2,
+        vy: 1.5 + Math.random()*1.5 + score/500
+      });
+    }
+  }
+  enemies.forEach(e => { e.x += e.vx; e.y += e.vy; if(e.x<e.r||e.x>W-e.r) e.vx*=-1; });
+
+  for (let bi = bullets.length-1; bi >= 0; bi--) {
+    for (let ei = enemies.length-1; ei >= 0; ei--) {
+      const b = bullets[bi], e = enemies[ei];
+      if (!b || !e) continue;
+      const dx=b.x-e.x, dy=b.y-e.y;
+      if (Math.sqrt(dx*dx+dy*dy) < 5+e.r) {
+        for(let i=0;i<6;i++) particles.push({
+          x:e.x, y:e.y, vx:(Math.random()-.5)*5, vy:(Math.random()-.5)*5,
+          life:20, color:`hsl(${Math.random()*60+10},100%,60%)`
+        });
+        score += 10;
+        document.getElementById('scoreLabel').textContent = score;
+        enemies.splice(ei, 1);
+        bullets.splice(bi, 1);
+        break;
+      }
+    }
+  }
+
+  for (let ei = enemies.length-1; ei >= 0; ei--) {
+    const e = enemies[ei];
+    const dx=e.x-player.x, dy=e.y-player.y;
+    if (Math.sqrt(dx*dx+dy*dy) < e.r+player.r-6) {
+      enemies.splice(ei,1); loseLife(); continue;
+    }
+    if (e.y > H+30) { enemies.splice(ei,1); loseLife(); }
+  }
+
+  particles = particles.filter(p => { p.x+=p.vx; p.y+=p.vy; p.life--; return p.life>0; });
+}
+
+function loseLife() {
+  lives--;
+  const h = ['','❤️','❤️❤️','❤️❤️❤️'];
+  document.getElementById('livesLabel').textContent = h[Math.max(0,lives)] || '';
+  if (lives <= 0) gameOver();
+}
+
+function draw() {
+  ctx.fillStyle = '#000010';
+  ctx.fillRect(0, 0, W, H);
+
+  stars.forEach(s => {
+    ctx.globalAlpha = s.s / 3;
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(s.x, s.y, s.s, 0, Math.PI*2); ctx.fill();
   });
-}
+  ctx.globalAlpha = 1;
 
-// ========================
-// ENEMIES
-// ========================
-function spawnEnemy() {
-  const types = ['mushroom','wolf','bat','owl'];
-  let type;
-  const r = Math.random();
-  if(difficultyLevel < 3) {
-    type = r < 0.5 ? 'mushroom' : (r < 0.8 ? 'bat' : 'wolf');
-  } else {
-    type = types[Math.floor(Math.random()*types.length)];
-  }
-
-  const x = 30 + Math.random()*(W-60);
-  let hp, speed, score_val, size, shootRate;
-
-  switch(type) {
-    case 'mushroom': hp=1; speed=enemySpeed*0.8; score_val=10; size=20; shootRate=0; break;
-    case 'bat': hp=1; speed=enemySpeed*1.4; score_val=15; size=18; shootRate=0; break;
-    case 'wolf': hp=2; speed=enemySpeed*0.9; score_val=20; size=24; shootRate=180; break;
-    case 'owl': hp=3; speed=enemySpeed*1.1; score_val=30; size=22; shootRate=120; break;
-  }
-
-  enemies.push({
-    x, y: -30,
-    vx: (Math.random()-0.5)*1.5,
-    vy: speed,
-    hp, maxHp: hp,
-    type, size, score_val,
-    shootRate, shootTimer: Math.random()*shootRate,
-    angle: 0, sway: Math.random()*Math.PI*2,
-    flash: 0
+  particles.forEach(p => {
+    ctx.globalAlpha = p.life/20;
+    ctx.fillStyle = p.color;
+    ctx.beginPath(); ctx.arc(p.x, p.y, 4, 0, Math.PI*2); ctx.fill();
   });
-}
+  ctx.globalAlpha = 1;
 
-function spawnBoss() {
-  bossActive = true;
-  bossEnemy = {
-    x: W/2, y: -60,
-    vx: 2, vy: 1.5,
-    hp: 30 + difficultyLevel*15,
-    maxHp: 30 + difficultyLevel*15,
-    type: 'boss',
-    size: 55,
-    score_val: 300 + difficultyLevel*50,
-    shootRate: 50,
-    shootTimer: 0,
-    angle: 0,
-    phase: 0,
-    flash: 0,
-    phaseTimer: 0
-  };
-}
+  ctx.shadowBlur = 8; ctx.shadowColor = '#00d4ff'; ctx.fillStyle = '#00d4ff';
+  bullets.forEach(b => { ctx.beginPath(); ctx.arc(b.x, b.y, 5, 0, Math.PI*2); ctx.fill(); });
+  ctx.shadowBlur = 0;
 
-function drawEnemy(e) {
-  ctx.save();
-  ctx.translate(e.x, e.y);
+  ctx.shadowBlur = 10; ctx.shadowColor = '#ff0000'; ctx.fillStyle = '#ff4444';
+  enemies.forEach(e => {
+    ctx.beginPath();
+    ctx.moveTo(e.x, e.y+e.r);
+    ctx.lineTo(e.x-e.r, e.y-e.r);
+    ctx.lineTo(e.x+e.r, e.y-e.r);
+    ctx.closePath(); ctx.fill();
+  });
+  ctx.shadowBlur = 0;
 
-  if(e.flash > 0) {
-    ctx.globalAlpha = 0.7 + 0.3*Math.sin(e.flash*0.5);
+  ctx.shadowBlur = 14; ctx.shadowColor = '#7b7bff'; ctx.fillStyle = '#7b7bff';
+  ctx.beginPath();
+  ctx.moveTo(player.x, player.y - player.r);
+  ctx.lineTo(player.x - player.r, player.y + player.r);
+  ctx.lineTo(player.x + player.r, player.y + player.r);
+  ctx.closePath(); ctx.fill();
+  ctx.shadowBlur = 0;
+
+  if (touching) {
+    ctx.fillStyle = `hsla(${frame*10%60+10},100%,60%,.8)`;
+    ctx.beginPath();
+    ctx.moveTo(player.x-8, player.y+player.r);
+    ctx.lineTo(player.x+8, player.y+player.r);
+    ctx.lineTo(player.x, player.y+player.r+12+Math.random()*8);
+    ctx.closePath(); ctx.fill();
   }
+}
 
-  switch(e.type) {
-    case 'mushroom':
-      // Cap
-      ctx.beginPath();
-      ctx.ellipse(0, -8, e.size*0.7, e.size*0.5, 0, Math.PI, 0);
-      ctx.fillStyle = e.flash>0 ? '#ffffff' : '#cc2222';
-      ctx.fill();
-      // Dots
-      ctx.fillStyle = 'white';
-      ctx.beginPath(); ctx.arc(-6, -12, 3, 0, Math.PI*2); ctx.fill();
-      ctx.beginPath(); ctx.arc(5, -15, 2, 0, Math.PI*2); ctx.fill();
-      ctx.beginPath(); ctx.arc(0, -8, 2, 0, Math.PI*2); ctx.fill();
-      // Stem
-      ctx.beginPath();
-      ctx.roundRect(-8, -8, 16, 14, 4);
-      ctx.fillStyle = '#ffeecc';
-      ctx.fill();
-      // Eyes
-      ctx.fillStyle = '#000';
-      ctx.beginPath(); ctx.arc(-4, -4, 2, 0, Math.PI*2); ctx.fill();
-      ctx.beginPath(); ctx.arc(4, -4, 2, 0, Math.PI*2); ctx.fill();
-      break;
+async function gameOver() {
+  running = false;
+  document.getElementById('hud').classList.remove('on');
+  document.getElementById('gameover').classList.add('on');
+  document.getElementById('myScoreLabel').textContent = `${nickname}의 점수: ${score}점`;
 
-    case 'bat':
-      e.angle = Math.sin(frameCount*0.15)*0.4;
-      ctx.rotate(e.angle);
-      // Wings
-      ctx.beginPath();
-      ctx.moveTo(0,0);
-      ctx.bezierCurveTo(-e.size,-10,-e.size*1.2,10,-e.size*0.3,8);
-      ctx.fillStyle = e.flash>0 ? '#ffffff' : '#553377';
-      ctx.fill();
-      ctx.beginPath();
-      ctx.moveTo(0,0);
-      ctx.bezierCurveTo(e.size,-10,e.size*1.2,10,e.size*0.3,8);
-      ctx.fillStyle = e.flash>0 ? '#ffffff' : '#553377';
-      ctx.fill();
-      // Body
-      ctx.beginPath();
-      ctx.ellipse(0, 4, 10, 12, 0, 0, Math.PI*2);
-      ctx.fillStyle = e.flash>0 ? '#ffffff' : '#331155';
-      ctx.fill();
-      // Eyes
-      ctx.fillStyle = '#ff4444';
-      ctx.beginPath(); ctx.arc(-4, 2, 2.5, 0, Math.PI*2); ctx.fill();
-      ctx.beginPath(); ctx.arc(4, 2, 2.5, 0, Math.PI*2); ctx.fill();
-      break;
+  try { await SB.from('scores').insert({ game_date: GAME_DATE, nickname, score }); }
+  catch(e) { console.warn('점수 저장 실패', e); }
 
-    case 'wolf':
-      // Body
-      ctx.beginPath();
-      ctx.ellipse(0, 4, e.size*0.6, e.size*0.5, 0, 0, Math.PI*2);
-      ctx.fillStyle = e.flash>0 ? '#ffffff' : '#996633';
-      ctx.fill();
-      // Head
-      ctx.beginPath();
-      ctx.ellipse(0, -10, 14, 12, 0, 0, Math.PI*2);
-      ctx.fillStyle = e.flash>0 ? '#ffffff' : '#aa7744';
-      ctx.fill();
-      // Ears
-      ctx.beginPath();
-      ctx.moveTo(-10, -18); ctx.lineTo(-16, -28); ctx.lineTo(-4, -20);
-      ctx.fillStyle = e.flash>0 ? '#ffffff' : '#996633';
-      ctx.fill();
-      ctx.beginPath();
-      ctx.moveTo(10, -18); ctx.lineTo(16, -28); ctx.lineTo(4, -20);
-      ctx.fillStyle = e.flash>0 ? '#ffffff' : '#996633';
-      ctx.fill();
-      // Eyes
-      ctx.fillStyle = '#ffcc00';
-      ctx.beginPath(); ctx.arc(-5, -11, 3, 0, Math.PI*2); ctx.fill();
-      ctx.beginPath(); ctx.arc(5, -11, 3, 0, Math.PI*2); ctx.fill();
-      ctx.fillStyle = '#000';
-      ctx.beginPath(); ctx.arc(-5, -11, 1.5, 0, Math.PI*2); ctx.fill();
-      ctx.beginPath(); ctx.arc(5, -11, 1
+  try {
+    const { data } = await SB.from('scores')
+      .select('nickname, score')
+      .eq('game_date', GAME_DATE)
+      .order('score', { ascending: false })
+      .limit(5);
+    if (data && data.length) {
+      document.getElementById('board').innerHTML =
+        '<b style="color:#7b7bff">오늘의 리더보드</b><br>' +
+        data.map((r,i) => `${['🥇','🥈','🥉','4️⃣','5️⃣'][i]} ${r.nickname} — ${r.score}점`).join('<br>');
+    } else {
+      document.getElementById('board').textContent = '아직 기록 없음';
+    }
+  } catch(e) { document.getElementById('board').textContent = '리더보드 오류'; }
+}
+</script>
+</body>
+</html>

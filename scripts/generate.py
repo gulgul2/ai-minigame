@@ -195,6 +195,20 @@ def update_index(genre: str, theme: str):
 
 
 def main():
+    # 오늘 게임이 이미 존재하면 재생성 금지
+    game_path_check = GAMES_DIR / f"{TODAY}.html"
+    if game_path_check.exists():
+        print(f"[generate] 오늘 게임 이미 존재 ({TODAY}.html) — 스킵")
+        used = load_used_games()
+        today_game = next((g for g in reversed(used) if g["date"] == TODAY), None)
+        title = today_game["title"] if today_game else f"게임 {TODAY}"
+        env_file = os.environ.get("GITHUB_ENV", "")
+        if env_file:
+            with open(env_file, "a") as f:
+                f.write(f"GAME_TITLE={title}\n")
+                f.write(f"GAME_DATE={TODAY}\n")
+        sys.exit(0)
+
     used = load_used_games()
     genre, theme = pick_combo(used)
     print(f"[generate] 오늘의 게임: {genre} × {theme}")
