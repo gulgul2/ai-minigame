@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 Playwright로 생성된 게임 HTML 검증.
+- HTML 완전성 (</html>로 끝나는지)
 - JS 에러 없음
 - 닉네임 선택 버튼 4개 존재
 - 화면 비어있지 않음 (스크린샷 픽셀 분석)
@@ -10,15 +11,20 @@ from pathlib import Path
 
 
 def validate(html_path: str) -> tuple[bool, str]:
+    path = Path(html_path).resolve()
+
+    # 1. 파일 완전성 체크 (Playwright 전에 빠르게 탈락)
+    content = path.read_text(encoding="utf-8")
+    if not content.strip().lower().endswith("</html>"):
+        return False, "HTML이 </html>로 끝나지 않음 (토큰 초과로 잘린 파일)"
+
     try:
-        from playwright.sync_api import sync_playwright, Error as PlaywrightError
+        from playwright.sync_api import sync_playwright
     except ImportError:
-        # Playwright 없으면 기본 통과 (로컬 환경)
         print("[validate] Playwright 없음 — 건너뜀")
         return True, ""
 
     js_errors = []
-    path = Path(html_path).resolve()
 
     with sync_playwright() as p:
         browser = p.chromium.launch(args=["--no-sandbox"])
@@ -35,16 +41,13 @@ def validate(html_path: str) -> tuple[bool, str]:
             return False, f"JS 오류: {js_errors[0]}"
 
         # 닉네임 버튼 체크
-        names = ["태형", "상이", "세준", "영근"]
-        for name in names:
-            count = page.locator(f"text={name}").count()
-            if count == 0:
+        for name in ["태형", "상이", "세준", "영근"]:
+            if page.locator(f"text={name}").count() == 0:
                 browser.close()
                 return False, f"닉네임 버튼 없음: {name}"
 
-        # 스크린샷 - 빈 화면 체크 (body background만 있는지)
+        # 빈 화면 체크
         screenshot = page.screenshot()
-        # 100바이트 이상이면 뭔가 렌더링된 것
         if len(screenshot) < 5000:
             browser.close()
             return False, "화면이 거의 비어있음"
