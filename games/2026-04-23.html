@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>판타지 슈팅</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#0a0015;font-family:'Arial',sans-serif;overflow:hidden;}
+canvas{position:fixed;top:0;left:0;z-index:1;width:100%;height:100%;}
+#nickScreen,#gameoverScreen{position:fixed;z-index:10;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(10,0,21,0.95);}
+h1{color:#d4a0ff;font-size:2em;margin-bottom:30px;text-shadow:0 0 20px #a040ff;}
+.nick-btn{background:rgba(160,64,255,0.2);border:2px solid #a040ff;color:#fff;font-size:1.2em;padding:12px 30px;margin:8px;border-radius:25px;cursor:pointer;min-width:140px;transition:all 0.2s;}
+.nick-btn.selected,.nick-btn:hover{background:#a040ff;box-shadow:0 0 15px #a040ff;}
+#startBtn{background:linear-gradient(135deg,#a040ff,#4080ff);border:none;color:#fff;font-size:1.3em;padding:15px 50px;margin-top:20px;border-radius:30px;cursor:pointer;box-shadow:0 0 20px #a040ff;}
+#hud{position:fixed;top:10px;left:0;width:100%;z-index:5;display:none;text-align:center;color:#fff;font-size:1.1em;text-shadow:0 0 8px #a040ff;pointer-events:none;}
+#gameoverScreen h2{color:#ff80ff;font-size:1.8em;margin-bottom:10px;}
+#finalScore{color:#ffe0ff;font-size:1.3em;margin-bottom:20px;}
+#leaderboard{color:#ccc;font-size:1em;margin-bottom:20px;text-align:center;line-height:1.8em;}
+#restartBtn{background:linear-gradient(135deg,#a040ff,#4080ff);border:none;color:#fff;font-size:1.2em;padding:12px 40px;border-radius:25px;cursor:pointer;}
+</style>
+</head>
+<body>
+<div id="nickScreen">
+<h1>✨ 판타지 슈팅 ✨</h1>
+<div id="nickBtns">
+<button class="nick-btn" onclick="selectNick(this,'태형')">태형</button>
+<button class="nick-btn" onclick="selectNick(this,'상이')">상이</button>
+<button class="nick-btn" onclick="selectNick(this,'세준')">세준</button>
+<button class="nick-btn" onclick="selectNick(this,'영근')">영근</button>
+</div>
+<button id="startBtn" onclick="startGame()">START</button>
+</div>
+<canvas id="c"></canvas>
+<div id="hud">❤️ <span id="hpVal">3</span> &nbsp;|&nbsp; ⭐ <span id="scoreVal">0</span></div>
+<div id="gameoverScreen" style="display:none;">
+<h2>💀 게임 오버 💀</h2>
+<div id="finalScore"></div>
+<div id="leaderboard"></div>
+<button id="restartBtn" onclick="restart()">다시하기</button>
+</div>
+<script>
+const SB=window.supabase.createClient('https://zypthfexxjcsguycjggr.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5cHRoZmV4eGpjc2d1eWNqZ2dyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3Njc2NzksImV4cCI6MjA5MjM0MzY3OX0.HaC4ltXQrO7_BQCeLqBVtvCBs4wL3Hzy6Ow_mO24vs0');
+const canvas=document.getElementById('c'),ctx=canvas.getContext('2d');
+let W,H,nick='',score=0,hp=3,bullets=[],enemies=[],particles=[],stars=[],running=false,frame=0,shootTimer=0,enemyTimer=0,animId;
+let px,py,input={x:0,y:0,active:false};
+function resize(){W=canvas.width=window.innerWidth;H=canvas.height=window.innerHeight;px=W/2;py=H*0.8;}
+window.addEventListener('resize',resize);resize();
+function selectNick(el,n){nick=n;document.querySelectorAll('.nick-btn').forEach(b=>b.classList.remove('selected'));el.classList.add('selected');}
+function startGame(){if(!nick)return;document.getElementById('nickScreen').style.display='none';document.getElementById('hud').style.display='block';initGame();running=true;loop();}
+function initGame(){score=0;hp=3;bullets=[];enemies=[];particles=[];frame=0;shootTimer=0;enemyTimer=0;px=W/2;py=H*0.8;stars=Array.from({length:80},()=>({x:Math.random()*W,y:Math.random()*H,s:Math.random()*2+0.5,sp:Math.random()*1.5+0.5}));updateHUD();}
+function updateHUD(){document.getElementById('hpVal').textContent=hp;document.getElementById('scoreVal').textContent=score;}
+function addParticle(x,y,color){for(let i=0;i<8;i++)particles.push({x,y,vx:(Math.random()-0.5)*4,vy:(Math.random()-0.5)*4,life:1,color});}
+function spawnEnemy(){const x=Math.random()*(W-40)+20;const types=['💀','🐉','👹','🦇'];enemies.push({x,y:-30,type:types[Math.floor(Math.random()*types.length)],hp:2,speed:1.5+Math.random()*1.5+score/2000});}
+function shoot(){bullets.push({x:px,y:py-20,dy:-12});}
+function drawStar(){ctx.fillStyle='#0a0015';ctx.fillRect(0,0,W,H);stars.forEach(s=>{s.y+=s.sp;if(s.y>H)s.y=0;ctx.beginPath();ctx.arc(s.x,s.y,s.s,0,Math.PI*2);ctx.fillStyle='rgba(200,180,255,0.8)';ctx.fill();});}
+function drawPlayer(){ctx.font='36px serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.shadowColor='#a040ff';ctx.shadowBlur=20;ctx.fillText('🧙',px,py);ctx.shadowBlur=0;}
+function drawBullets(){bullets.forEach(b=>{ctx.beginPath();ctx.arc(b.x,b.y,6,0,Math.PI*2);const g=ctx.createRadialGradient(b.x,b.y,0,b.x,b.y,6);g.addColorStop(0,'#fff');g.addColorStop(1,'#a040ff');ctx.fillStyle=g;ctx.shadowColor='#a040ff';ctx.shadowBlur=10;ctx.fill();ctx.shadowBlur=0;});}
+function drawEnemies(){enemies.forEach(e=>{ctx.font='34px serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(e.type,e.x,e.y);});}
+function drawParticles(){particles.forEach(p=>{ctx.globalAlpha=p.life;ctx.beginPath();ctx.arc(p.x,p.y,4*p.life,0,Math.PI*2);ctx.fillStyle=p.color;ctx.fill();});ctx.globalAlpha=1;}
+function loop(){if(!running)return;animId=requestAnimationFrame(loop);frame++;
+drawStar();
+shootTimer++;if(shootTimer>=15){shoot();shootTimer=0;}
+enemyTimer++;const rate=Math.max(40-Math.floor(score/100),15);if(enemyTimer>=rate){spawnEnemy();enemyTimer=0;}
+if(input.active){const dx=input.x-px,dy=input.y-py,dist=Math.sqrt(dx*dx+dy*dy);if(dist>5){px+=dx*0.18;py+=dy*0.18;}px=Math.max(20,Math.min(W-20,px));py=Math.max(20,Math.min(H-20,py));}
+bullets.forEach(b=>{b.y+=b.dy;});bullets=bullets.filter(b=>b.y>-20);
+enemies.forEach(e=>{e.y+=e.speed;});
+enemies=enemies.filter(e=>{if(e.y>H+40){hp--;updateHUD();if(hp<=0)endGame();return false;}return true;});
+bullets=bullets.filter(b=>{let hit=false;enemies=enemies.filter(e=>{const dx=b.x-e.x,dy=b.y-e.y;if(Math.sqrt(dx*dx+dy*dy)<28){e.hp--;if(e.hp<=0){addParticle(e.x,e.y,'#ff80ff');score+=10;updateHUD();}hit=true;return e.hp>0;}return true;});return !hit;});
+enemies=enemies.filter(e=>{const dx=px-e.x,dy=py-e.y;if(Math.sqrt(dx*dx+dy*dy)<30){hp--;addParticle(px,py,'#ff4040');updateHUD();if(hp<=0)endGame();return false;}return true;});
+particles.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.life-=0.05;});particles=particles.filter(p=>p.life>0);
+drawBullets();drawEnemies();drawParticles();drawPlayer();}
+async function endGame(){running=false;cancelAnimationFrame(animId);document.getElementById('hud').style.display='none';document.getElementById('finalScore').textContent=nick+'님의 점수: '+score;document.getElementById('gameoverScreen').style.display='flex';
+await SB.from('scores').insert({game_date:'2026-04-23',nickname:nick,score});
+const{data}=await SB.from('scores').select('nickname,score').eq('game_date','2026-04-23').order('score',{ascending:false}).limit(5);
+if(data){let html='<b>🏆 리더보드</b><br>';data.forEach((r,i)=>html+=`${['🥇','🥈','🥉','4️⃣','5️⃣'][i]} ${r.nickname} - ${r.score}<br>`);document.getElementById('leaderboard').innerHTML=html;}}
+function restart(){document.getElementById('gameoverScreen').style.display='none';document.getElementById('hud').style.display='block';initGame();running=true;loop();}
+function getPos(e){const r=canvas.getBoundingClientRect(),scx=W/r.width,scy=H/r.height;if(e.touches&&e.touches.length>0)return{x:(e.touches[0].clientX-r.left)*scx,y:(e.touches[0].clientY-r.top)*scy};return{x:(e.clientX-r.left)*scx,y:(e.clientY-r.top)*scy};}
+canvas.addEventListener('touchstart',e=>{e.preventDefault();const p=getPos(e);input={x:p.x,y:p.y,active:true};},{passive:false});
+canvas.addEventListener('touchmove',e=>{e.preventDefault();const p=getPos(e);input.x=p.x;input.y=p.y;},{passive:false});
+canvas.addEventListener('touchend',e=>{e.preventDefault();input.active=false;},{passive:false});
+canvas.addEventListener('mousedown',e=>{const p=getPos(e);input={x:p.x,y:p.y,active:true};});
+canvas.addEventListener('mousemove',e=>{if(input.active){const p=getPos(e);input.x=p.x;input.y=p.y;}});
+canvas.addEventListener('mouseup',()=>{input.active=false;});
+</script>
+</body>
+</html>
