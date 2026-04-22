@@ -120,7 +120,7 @@ HTML 코드만 출력해. ```html 블록 없이 <!DOCTYPE html>부터 바로 시
 
     message = client.messages.create(
         model="claude-sonnet-4-6",
-        max_tokens=8192,
+        max_tokens=16000,
         messages=[{"role": "user", "content": prompt}]
     )
 
