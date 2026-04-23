@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>푸드 슈터</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#1a1a2e;font-family:'Arial',sans-serif;overflow:hidden;}
+canvas{position:fixed;top:0;left:0;z-index:1;width:100%;height:100%;}
+#nickScreen,#overScreen{position:fixed;z-index:10;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(20,20,40,0.97);}
+h1{color:#ff6b6b;font-size:2em;margin-bottom:10px;text-shadow:0 0 20px #ff6b6b;}
+p.sub{color:#ffd93d;margin-bottom:30px;font-size:1.1em;}
+.nick-btns{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;margin-bottom:30px;}
+.nbtn{padding:12px 22px;border:2px solid #ffd93d;background:transparent;color:#ffd93d;border-radius:30px;font-size:1.1em;cursor:pointer;transition:all .2s;}
+.nbtn.sel,.nbtn:hover{background:#ffd93d;color:#1a1a2e;}
+#startBtn{padding:14px 40px;background:#ff6b6b;color:#fff;border:none;border-radius:30px;font-size:1.2em;cursor:pointer;box-shadow:0 0 20px #ff6b6b88;}
+#startBtn:hover{background:#ff4757;}
+#overScreen h2{color:#ffd93d;font-size:1.8em;margin-bottom:8px;}
+#finalScore{color:#fff;font-size:1.3em;margin-bottom:20px;}
+#leaderboard{color:#eee;font-size:1em;margin-bottom:24px;text-align:center;min-width:220px;}
+#leaderboard h3{color:#ff6b6b;margin-bottom:10px;}
+#leaderboard li{list-style:none;padding:4px 0;border-bottom:1px solid #333;}
+#retryBtn{padding:12px 36px;background:#ff6b6b;color:#fff;border:none;border-radius:30px;font-size:1.1em;cursor:pointer;}
+#retryBtn:hover{background:#ff4757;}
+#hud{position:fixed;top:10px;left:0;width:100%;z-index:5;display:flex;justify-content:space-between;padding:0 16px;pointer-events:none;}
+#hud span{color:#fff;font-size:1.1em;text-shadow:0 1px 4px #000;}
+</style>
+</head>
+<body>
+<div id="nickScreen">
+  <h1>🍔 푸드 슈터</h1>
+  <p class="sub">닉네임을 선택하세요</p>
+  <div class="nick-btns">
+    <button class="nbtn" onclick="selNick(this,'태형')">태형</button>
+    <button class="nbtn" onclick="selNick(this,'상이')">상이</button>
+    <button class="nbtn" onclick="selNick(this,'세준')">세준</button>
+    <button class="nbtn" onclick="selNick(this,'영근')">영근</button>
+  </div>
+  <button id="startBtn" onclick="startGame()">START</button>
+</div>
+<div id="hud" style="display:none"><span id="hudNick"></span><span id="hudScore">점수: 0</span></div>
+<canvas id="c"></canvas>
+<div id="overScreen" style="display:none">
+  <h2>🍕 GAME OVER</h2>
+  <div id="finalScore"></div>
+  <div id="leaderboard"><h3>🏆 리더보드</h3><ul id="lbList"></ul></div>
+  <button id="retryBtn" onclick="retry()">다시하기</button>
+</div>
+<script>
+const SB=window.supabase.createClient('https://zypthfexxjcsguycjggr.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5cHRoZmV4eGpjc2d1eWNqZ2dyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3Njc2NzksImV4cCI6MjA5MjM0MzY3OX0.HaC4ltXQrO7_BQCeLqBVtvCBs4wL3Hzy6Ow_mO24vs0');
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+let W,H,nick='',score=0,lives=3,running=false,raf;
+let ship,bullets=[],enemies=[],particles=[],lastEnemyTime=0,enemyInterval=1200,frame=0;
+const FOODS=['🍔','🍕','🌮','🍜','🍣','🍩','🍦','🥪','🍎','🌭'];
+function selNick(el,n){document.querySelectorAll('.nbtn').forEach(b=>b.classList.remove('sel'));el.classList.add('sel');nick=n;}
+function resize(){W=canvas.width=window.innerWidth;H=canvas.height=window.innerHeight;}
+window.addEventListener('resize',resize);resize();
+function initShip(){ship={x:W/2,y:H-80,w:40,h:40,speed:0,targetX:W/2};}
+function startGame(){
+  if(!nick){alert('닉네임을 선택하세요!');return;}
+  document.getElementById('nickScreen').style.display='none';
+  document.getElementById('hud').style.display='flex';
+  document.getElementById('hudNick').textContent=nick;
+  score=0;lives=3;bullets=[];enemies=[];particles=[];lastEnemyTime=0;enemyInterval=1200;frame=0;
+  initShip();running=true;loop();
+}
+function loop(){
+  if(!running)return;
+  raf=requestAnimationFrame(loop);
+  update();draw();
+}
+function update(){
+  frame++;
+  ship.x+=(ship.targetX-ship.x)*0.12;
+  if(ship.x<20)ship.x=20;if(ship.x>W-20)ship.x=W-20;
+  if(frame%12===0)bullets.push({x:ship.x,y:ship.y-20,r:6});
+  bullets.forEach(b=>b.y-=10);
+  bullets=bullets.filter(b=>b.y>-10);
+  const now=Date.now();
+  if(now-lastEnemyTime>enemyInterval){
+    enemies.push({x:40+Math.random()*(W-80),y:-30,emoji:FOODS[Math.floor(Math.random()*FOODS.length)],speed:1.5+Math.random()*2,r:22});
+    lastEnemyTime=now;
+    if(enemyInterval>500)enemyInterval-=8;
+  }
+  enemies.forEach(e=>e.y+=e.speed);
+  for(let i=enemies.length-1;i>=0;i--){
+    if(enemies[i].y>H+40){enemies.splice(i,1);lives--;if(lives<=0)gameOver();continue;}
+    for(let j=bullets.length-1;j>=0;j--){
+      const b=bullets[j],e=enemies[i];
+      if(!e)break;
+      if(Math.hypot(b.x-e.x,b.y-e.y)<e.r+b.r){
+        spawnParticles(e.x,e.y,e.emoji);
+        enemies.splice(i,1);bullets.splice(j,1);
+        score+=10;document.getElementById('hudScore').textContent='점수: '+score;
+        break;
+      }
+    }
+  }
+  particles.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=0.2;p.life--;});
+  particles=particles.filter(p=>p.life>0);
+}
+function spawnParticles(x,y,emoji){
+  for(let i=0;i<6;i++)particles.push({x,y,vx:(Math.random()-0.5)*5,vy:(Math.random()-0.5)*5-2,life:30,emoji});
+}
+function draw(){
+  ctx.fillStyle='#0d0d1a';ctx.fillRect(0,0,W,H);
+  drawStars();
+  ctx.font='36px serif';ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillText('🚀',ship.x,ship.y);
+  ctx.fillStyle='#00e5ff';
+  bullets.forEach(b=>{ctx.beginPath();ctx.arc(b.x,b.y,b.r,0,Math.PI*2);ctx.fill();});
+  ctx.font='36px serif';
+  enemies.forEach(e=>ctx.fillText(e.emoji,e.x,e.y));
+  ctx.font='22px serif';
+  particles.forEach(p=>{ctx.globalAlpha=p.life/30;ctx.fillText(p.emoji,p.x,p.y);});
+  ctx.globalAlpha=1;
+  for(let i=0;i<lives;i++)ctx.fillText('❤️',18+i*28,H-20);
+}
+let starField=null;
+function drawStars(){
+  if(!starField){starField=[];for(let i=0;i<60;i++)starField.push({x:Math.random()*W,y:Math.random()*H,r:Math.random()*1.5+0.5});}
+  ctx.fillStyle='#ffffff44';
+  starField.forEach(s=>{ctx.beginPath();ctx.arc(s.x,s.y,s.r,0,Math.PI*2);ctx.fill();s.y+=0.3;if(s.y>H)s.y=0;});
+}
+async function gameOver(){
+  running=false;cancelAnimationFrame(raf);
+  document.getElementById('hud').style.display='none';
+  document.getElementById('finalScore').textContent=nick+'님의 점수: '+score;
+  document.getElementById('overScreen').style.display='flex';
+  await SB.from('scores').insert({game_date:'2026-04-24',nickname:nick,score});
+  const {data}=await SB.from('scores').select('nickname,score').eq('game_date','2026-04-24').order('score',{ascending:false}).limit(5);
+  const ul=document.getElementById('lbList');ul.innerHTML='';
+  if(data)data.forEach((r,i)=>{const li=document.createElement('li');li.textContent=(i+1)+'. '+r.nickname+' - '+r.score+'점';ul.appendChild(li);});
+}
+function retry(){document.getElementById('overScreen').style.display='none';document.getElementById('nickScreen').style.display='flex';}
+function getX(e){return e.touches?e.touches[0].clientX:e.clientX;}
+canvas.addEventListener('touchstart',e=>{e.preventDefault();if(running)ship.targetX=getX(e);},{passive:false});
+canvas.addEventListener('touchmove',e=>{e.preventDefault();if(running)ship.targetX=getX(e);},{passive:false});
+canvas.addEventListener('touchend',e=>{e.preventDefault();},{passive:false});
+canvas.addEventListener('mousedown',e=>{if(running)ship.targetX=getX(e);});
+canvas.addEventListener('mousemove',e=>{if(running&&e.buttons)ship.targetX=getX(e);});
+canvas.addEventListener('mouseup',e=>{});
+</script>
+</body>
+</html>
