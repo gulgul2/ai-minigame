@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>스포츠 슈팅</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#1a1a2e;font-family:'Arial',sans-serif;overflow:hidden;}
+canvas{position:fixed;top:0;left:0;z-index:1;width:100%;height:100%;}
+#nickScreen,#overScreen{position:fixed;z-index:10;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(10,10,30,0.95);}
+h1{color:#FFD700;font-size:2em;margin-bottom:10px;text-shadow:0 0 10px #FFD700;}
+p{color:#aaa;margin-bottom:20px;font-size:0.9em;}
+.nick-btns{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;margin-bottom:24px;}
+.nick-btn{padding:12px 22px;border:2px solid #444;background:#222;color:#fff;border-radius:10px;font-size:1em;cursor:pointer;transition:all .2s;}
+.nick-btn.selected{border-color:#FFD700;background:#3a3000;color:#FFD700;}
+#startBtn,#restartBtn{padding:14px 36px;background:#FFD700;color:#000;border:none;border-radius:12px;font-size:1.1em;font-weight:bold;cursor:pointer;margin-top:8px;}
+#scoreBoard{color:#fff;font-size:1.1em;margin:10px 0 6px;}
+#leaderboard{color:#ccc;font-size:0.9em;text-align:center;margin-bottom:16px;min-height:60px;}
+#leaderboard div{padding:3px 0;}
+#leaderboard .gold{color:#FFD700;}
+#hud{position:fixed;top:10px;left:0;width:100%;z-index:5;display:flex;justify-content:space-between;padding:0 16px;pointer-events:none;}
+#hud span{color:#fff;font-size:1em;background:rgba(0,0,0,0.4);padding:4px 10px;border-radius:8px;}
+</style>
+</head>
+<body>
+<div id="nickScreen">
+  <h1>⚽ 스포츠 슈팅</h1>
+  <p>닉네임을 선택하세요</p>
+  <div class="nick-btns">
+    <button class="nick-btn" onclick="selectNick(this,'태형')">태형</button>
+    <button class="nick-btn" onclick="selectNick(this,'상이')">상이</button>
+    <button class="nick-btn" onclick="selectNick(this,'세준')">세준</button>
+    <button class="nick-btn" onclick="selectNick(this,'영근')">영근</button>
+  </div>
+  <button id="startBtn" onclick="startGame()">START</button>
+</div>
+<div id="hud" style="display:none;"><span id="scoreTxt">점수: 0</span><span id="liveTxt">❤️ 3</span></div>
+<canvas id="c"></canvas>
+<div id="overScreen" style="display:none;">
+  <h1>GAME OVER</h1>
+  <div id="scoreBoard"></div>
+  <div id="leaderboard">불러오는 중...</div>
+  <button id="restartBtn" onclick="location.reload()">다시하기</button>
+</div>
+<script>
+const SB=window.supabase.createClient('https://zypthfexxjcsguycjggr.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5cHRoZmV4eGpjc2d1eWNqZ2dyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3Njc2NzksImV4cCI6MjA5MjM0MzY3OX0.HaC4ltXQrO7_BQCeLqBVtvCBs4wL3Hzy6Ow_mO24vs0');
+const canvas=document.getElementById('c'),ctx=canvas.getContext('2d');
+let W,H,nickname='',score=0,lives=3,running=false,raf;
+let player,balls=[],bullets=[],particles=[],goalPosts=[],frame=0,spawnTimer=0;
+let touchX=null,mouseX=null;
+function resize(){W=canvas.width=window.innerWidth;H=canvas.height=window.innerHeight;}
+window.addEventListener('resize',resize);resize();
+function selectNick(el,n){document.querySelectorAll('.nick-btn').forEach(b=>b.classList.remove('selected'));el.classList.add('selected');nickname=n;}
+function startGame(){if(!nickname)return alert('닉네임을 선택하세요!');document.getElementById('nickScreen').style.display='none';document.getElementById('hud').style.display='flex';initGame();running=true;loop();}
+function initGame(){
+  player={x:W/2,y:H-80,w:44,h:44,color:'#00BFFF'};
+  balls=[];bullets=[];particles=[];goalPosts=[];score=0;lives=3;frame=0;spawnTimer=0;
+  for(let i=0;i<3;i++)goalPosts.push({x:W*(i+1)/4,y:60,w:60,h:30,hp:3,maxHp:3});
+  updateHUD();
+}
+function updateHUD(){document.getElementById('scoreTxt').textContent='점수: '+score;document.getElementById('liveTxt').textContent='❤️ '+lives;}
+function spawnBall(){
+  const types=['soccer','basket','tennis'];
+  const t=types[Math.floor(Math.random()*3)];
+  const colors={soccer:'#fff',basket:'#FF6B00',tennis:'#CCFF00'};
+  const pts={soccer:10,basket:20,tennis:30};
+  balls.push({x:Math.random()*(W-40)+20,y:-20,r:16,vy:1.5+score/800,vx:(Math.random()-0.5)*1.5,color:colors[t],pts:pts[t],type:t});
+}
+function shoot(){bullets.push({x:player.x,y:player.y-22,r:8,vy:-12,color:'#FFD700'});}
+function addParticles(x,y,color,n){for(let i=0;i<n;i++)particles.push({x,y,vx:(Math.random()-0.5)*5,vy:(Math.random()-0.5)*5,life:1,color});}
+function getX(){if(touchX!==null)return touchX;if(mouseX!==null)return mouseX;return player.x;}
+canvas.addEventListener('touchstart',e=>{e.preventDefault();touchX=e.touches[0].clientX;shoot();},{passive:false});
+canvas.addEventListener('touchmove',e=>{e.preventDefault();touchX=e.touches[0].clientX;},{passive:false});
+canvas.addEventListener('touchend',e=>{e.preventDefault();touchX=null;},{passive:false});
+canvas.addEventListener('mousedown',e=>{mouseX=e.clientX;shoot();});
+canvas.addEventListener('mousemove',e=>{if(mouseX!==null)mouseX=e.clientX;});
+canvas.addEventListener('mouseup',()=>{mouseX=null;});
+function loop(){if(!running)return;raf=requestAnimationFrame(loop);update();draw();}
+function update(){
+  frame++;
+  player.x+=(getX()-player.x)*0.15;
+  player.x=Math.max(24,Math.min(W-24,player.x));
+  spawnTimer++;
+  const interval=Math.max(40,90-Math.floor(score/200));
+  if(spawnTimer>=interval){spawnBall();spawnTimer=0;}
+  if(frame%18===0&&score>100)shoot();
+  bullets=bullets.filter(b=>{b.y+=b.vy;return b.y>-10;});
+  balls=balls.filter(b=>{
+    b.x+=b.vx;b.y+=b.vy;
+    if(b.x<b.r||b.x>W-b.r)b.vx*=-1;
+    for(let i=bullets.length-1;i>=0;i--){
+      const bl=bullets[i];
+      if(Math.hypot(bl.x-b.x,bl.y-b.y)<b.r+bl.r){
+        bullets.splice(i,1);score+=b.pts;updateHUD();addParticles(b.x,b.y,b.color,8);return false;
+      }
+    }
+    if(b.y>H+20){lives--;updateHUD();addParticles(b.x,H,b.color,5);if(lives<=0){gameOver();return false;}return false;}
+    return true;
+  });
+  particles=particles.filter(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=0.1;p.life-=0.04;return p.life>0;});
+}
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  const g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,'#0a0a1e');g.addColorStop(1,'#0d2b0d');
+  ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='rgba(255,255,255,0.05)';ctx.lineWidth=1;
+  for(let i=0;i<H;i+=60){ctx.beginPath();ctx.moveTo(0,i);ctx.lineTo(W,i);ctx.stroke();}
+  goalPosts.forEach(g=>{
+    ctx.fillStyle='#fff';ctx.strokeStyle='#aaa';ctx.lineWidth=3;
+    ctx.beginPath();ctx.rect(g.x-g.w/2,g.y,g.w,g.h);ctx.stroke();
+    ctx.fillStyle=`hsl(${120*g.hp/g.maxHp},80%,40%)`;ctx.fillRect(g.x-g.w/2+2,g.y+2,g.w-4,g.h-4);
+  });
+  balls.forEach(b=>{
+    ctx.beginPath();ctx.arc(b.x,b.y,b.r,0,Math.PI*2);
+    ctx.fillStyle=b.color;ctx.fill();
+    ctx.strokeStyle='rgba(0,0,0,0.4)';ctx.lineWidth=2;ctx.stroke();
+    if(b.type==='soccer'){ctx.strokeStyle='#333';ctx.lineWidth=1;ctx.beginPath();ctx.arc(b.x,b.y,b.r*0.5,0,Math.PI*2);ctx.stroke();}
+  });
+  bullets.forEach(b=>{
+    ctx.beginPath();ctx.arc(b.x,b.y,b.r,0,Math.PI*2);
+    ctx.fillStyle=b.color;ctx.fill();
+    ctx.shadowColor=b.color;ctx.shadowBlur=10;ctx.fill();ctx.shadowBlur=0;
+  });
+  ctx.fillStyle=player.color;ctx.strokeStyle='#fff';ctx.lineWidth=2;
+  ctx.beginPath();ctx.roundRect(player.x-22,player.y-22,44,44,8);ctx.fill();ctx.stroke();
+  ctx.fillStyle='#fff';ctx.font='22px Arial';ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillText('🏃',player.x,player.y);
+  particles.forEach(p=>{
+    ctx.globalAlpha=p.life;ctx.fillStyle=p.color;
+    ctx.beginPath();ctx.arc(p.x,p.y,4*p.life,0,Math.PI*2);ctx.fill();
+  });
+  ctx.globalAlpha=1;
+}
+async function gameOver(){
+  running=false;cancelAnimationFrame(raf);
+  document.getElementById('hud').style.display='none';
+  document.getElementById('overScreen').style.display='flex';
+  document.getElementById('scoreBoard').textContent=`${nickname}의 점수: ${score}`;
+  await SB.from('scores').insert({game_date:'2026-04-26',nickname,score});
+  const {data}=await SB.from('scores').select('nickname,score').eq('game_date','2026-04-26').order('score',{ascending:false}).limit(5);
+  const lb=document.getElementById('leaderboard');
+  if(data&&data.length){lb.innerHTML='<b style="color:#FFD700">🏆 TOP 5</b><br>'+data.map((r,i)=>`<div class="${i===0?'gold':''}">${i+1}. ${r.nickname} - ${r.score}</div>`).join('');}
+  else lb.textContent='기록 없음';
+}
+</script>
+</body>
+</html>
