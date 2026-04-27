@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Future Shooter 2026</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#000;overflow:hidden;font-family:'Courier New',monospace;}
+canvas{position:fixed;top:0;left:0;z-index:1;width:100%;height:100%;}
+#nickname-screen,#gameover-screen{position:fixed;z-index:10;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,20,0.95);}
+h1{color:#00ffff;font-size:2em;text-shadow:0 0 20px #00ffff;margin-bottom:10px;}
+h2{color:#ff4444;font-size:1.8em;text-shadow:0 0 15px #ff4444;margin-bottom:15px;}
+.subtitle{color:#8888ff;font-size:0.9em;margin-bottom:30px;}
+.nick-btns{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-bottom:25px;}
+.nick-btn{background:rgba(0,255,255,0.1);border:2px solid #00ffff;color:#00ffff;padding:12px 22px;font-size:1.1em;border-radius:8px;cursor:pointer;transition:all 0.2s;}
+.nick-btn.selected,.nick-btn:hover{background:#00ffff;color:#000;}
+#start-btn,#retry-btn{background:linear-gradient(135deg,#00ffff,#0088ff);border:none;color:#000;padding:15px 40px;font-size:1.2em;font-weight:bold;border-radius:10px;cursor:pointer;margin-top:10px;}
+#start-btn:hover,#retry-btn:hover{opacity:0.85;}
+#score-display{color:#ffff00;font-size:1.3em;margin-bottom:20px;}
+#leaderboard{color:#aaaaff;font-size:0.95em;text-align:center;min-width:220px;}
+#leaderboard h3{color:#00ffff;margin-bottom:10px;font-size:1em;}
+.lb-row{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.1);}
+.lb-row span:first-child{color:#ffaa00;}
+#hud{position:fixed;z-index:5;top:10px;left:0;width:100%;display:flex;justify-content:space-between;padding:0 15px;pointer-events:none;}
+#hud-score,#hud-life{color:#00ffff;font-size:1.1em;text-shadow:0 0 8px #00ffff;}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud"><span id="hud-score">SCORE: 0</span><span id="hud-life">❤️❤️❤️</span></div>
+<div id="nickname-screen">
+<h1>⚡ FUTURE SHOOTER</h1>
+<div class="subtitle">2026 — GALACTIC DEFENSE</div>
+<div class="nick-btns">
+<button class="nick-btn" onclick="selectNick(this,'태형')">태형</button>
+<button class="nick-btn" onclick="selectNick(this,'상이')">상이</button>
+<button class="nick-btn" onclick="selectNick(this,'세준')">세준</button>
+<button class="nick-btn" onclick="selectNick(this,'영근')">영근</button>
+</div>
+<button id="start-btn" onclick="startGame()">START</button>
+</div>
+<div id="gameover-screen" style="display:none;">
+<h2>GAME OVER</h2>
+<div id="score-display"></div>
+<div id="leaderboard"><h3>🏆 TOP 5</h3><div id="lb-rows">Loading...</div></div>
+<button id="retry-btn" onclick="retry()" style="margin-top:20px;">RETRY</button>
+</div>
+<script>
+const SB=window.supabase.createClient('https://zypthfexxjcsguycjggr.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5cHRoZmV4eGpjc2d1eWNqZ2dyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3Njc2NzksImV4cCI6MjA5MjM0MzY3OX0.HaC4ltXQrO7_BQCeLqBVtvCBs4wL3Hzy6Ow_mO24vs0');
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+let W,H,nickname='',score=0,lives=3,running=false,animId;
+let player,bullets=[],enemies=[],particles=[],stars=[],shootCooldown=0,spawnTimer=0,spawnRate=90,level=1;
+let touchX=null,mouseX=null;
+function resize(){W=canvas.width=window.innerWidth;H=canvas.height=window.innerHeight;}
+resize();window.addEventListener('resize',()=>{resize();if(running&&player)player.y=H-80;});
+function selectNick(el,n){document.querySelectorAll('.nick-btn').forEach(b=>b.classList.remove('selected'));el.classList.add('selected');nickname=n;}
+function initStars(){stars=[];for(let i=0;i<80;i++)stars.push({x:Math.random()*W,y:Math.random()*H,r:Math.random()*1.5+0.3,s:Math.random()*1.5+0.5});}
+function startGame(){
+if(!nickname)return alert('닉네임을 선택하세요!');
+document.getElementById('nickname-screen').style.display='none';
+document.getElementById('hud').style.display='flex';
+running=true;score=0;lives=3;bullets=[];enemies=[];particles=[];spawnTimer=0;spawnRate=90;level=1;shootCooldown=0;
+initStars();
+player={x:W/2,y:H-80,w:36,h:40,speed:5};
+loop();
+}
+function retry(){document.getElementById('gameover-screen').style.display='none';startGame();}
+canvas.addEventListener('touchstart',e=>{e.preventDefault();touchX=e.touches[0].clientX;},{passive:false});
+canvas.addEventListener('touchmove',e=>{e.preventDefault();touchX=e.touches[0].clientX;},{passive:false});
+canvas.addEventListener('touchend',e=>{e.preventDefault();touchX=null;});
+canvas.addEventListener('mousedown',e=>{mouseX=e.clientX;});
+canvas.addEventListener('mousemove',e=>{if(mouseX!==null)mouseX=e.clientX;});
+canvas.addEventListener('mouseup',()=>{mouseX=null;});
+function spawnEnemy(){
+const types=[{w:34,h:32,hp:1,sp:1.2,sc:10,col:'#ff4488'},{w:44,h:38,hp:2,sp:0.8,sc:25,col:'#ff8800'},{w:28,h:26,hp:1,sp:2,sc:15,col:'#cc44ff'}];
+const t=types[Math.floor(Math.random()*types.length)];
+enemies.push({x:Math.random()*(W-60)+30,y:-40,...t,maxHp:t.hp});
+}
+function addParticle(x,y,col){for(let i=0;i<8;i++)particles.push({x,y,vx:(Math.random()-0.5)*4,vy:(Math.random()-2)*3,life:1,col});}
+function drawPlayer(p){
+ctx.save();
+ctx.shadowBlur=18;ctx.shadowColor='#00ffff';
+ctx.fillStyle='#00ffff';
+ctx.beginPath();ctx.moveTo(p.x,p.y-p.h/2);ctx.lineTo(p.x-p.w/2,p.y+p.h/2);ctx.lineTo(p.x+p.w/2,p.y+p.h/2);ctx.closePath();ctx.fill();
+ctx.fillStyle='#0044ff';ctx.fillRect(p.x-6,p.y+p.h/4,12,14);
+ctx.restore();
+}
+function drawEnemy(e){
+ctx.save();ctx.shadowBlur=12;ctx.shadowColor=e.col;ctx.fillStyle=e.col;
+ctx.beginPath();ctx.moveTo(e.x,e.y+e.h/2);ctx.lineTo(e.x-e.w/2,e.y-e.h/2);ctx.lineTo(e.x+e.w/2,e.y-e.h/2);ctx.closePath();ctx.fill();
+if(e.maxHp>1){ctx.fillStyle='rgba(255,255,255,0.4)';ctx.fillRect(e.x-e.w/2,e.y-e.h/2-8,(e.w*(e.hp/e.maxHp)),4);}
+ctx.restore();
+}
+function update(){
+stars.forEach(s=>{s.y+=s.s;if(s.y>H)s.y=0;});
+const tx=touchX||mouseX;
+if(tx!==null&&player){
+let diff=tx-player.x;
+player.x+=Math.sign(diff)*Math.min(Math.abs(diff)*0.15,player.speed*2);
+player.x=Math.max(player.w/2,Math.min(W-player.w/2,player.x));
+}
+shootCooldown--;
+if(shootCooldown<=0&&running){bullets.push({x:player.x,y:player.y-player.h/2,r:5});shootCooldown=18;}
+bullets=bullets.filter(b=>{b.y-=14;return b.y>-10;});
+spawnTimer++;
+if(spawnTimer>=spawnRate){spawnTimer=0;spawnEnemy();if(spawnRate>30)spawnRate=Math.max(30,spawnRate-1);}
+enemies.forEach(e=>e.y+=e.sp);
+for(let i=bullets.length-1;i>=0;i--){
+for(let j=enemies.length-1;j>=0;j--){
+const b=bullets[i],e=enemies[j];
+if(Math.abs(b.x-e.x)<e.w/2+5&&Math.abs(b.y-e.y)<e.h/2+5){
+e.hp--;addParticle(e.x,e.y,e.col);bullets.splice(i,1);
+if(e.hp<=0){score+=e.sc;enemies.splice(j,1);}break;
+}
+}
+}
+for(let j=enemies.length-1;j>=0;j--){
+const e=enemies[j];
+if(e.y>H+50){enemies.splice(j,1);lives--;updateHUD();if(lives<=0)gameOver();}
+else if(Math.abs(e.x-player.x)<(e.w/2+player.w/2-8)&&Math.abs(e.y-player.y)<(e.h/2+player.h/2-8)){
+addParticle(player.x,player.y,'#00ffff');enemies.splice(j,1);lives--;updateHUD();if(lives<=0)gameOver();
+}
+}
+particles=particles.filter(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=0.12;p.life-=0.04;return p.life>0;});
+level=Math.floor(score/200)+1;
+document.getElementById('hud-score').textContent='SCORE: '+score;
+}
+function updateHUD(){document.getElementById('hud-life').textContent='❤️'.repeat(Math.max(0,lives));}
+function draw(){
+ctx.fillStyle='#000010';ctx.fillRect(0,0,W,H);
+stars.forEach(s=>{ctx.beginPath();ctx.arc(s.x,s.y,s.r,0,Math.PI*2);ctx.fillStyle='rgba(255,255,255,0.7)';ctx.fill();});
+bullets.forEach(b=>{ctx.save();ctx.shadowBlur=10;ctx.shadowColor='#ffff00';ctx.fillStyle='#ffff88';ctx.beginPath();ctx.arc(b.x,b.y,b.r,0,Math.PI*2);ctx.fill();ctx.restore();});
+enemies.forEach(e=>drawEnemy(e));
+if(player)drawPlayer(player);
+particles.forEach(p=>{ctx.globalAlpha=p.life;ctx.fillStyle=p.col;ctx.beginPath();ctx.arc(p.x,p.y,3,0,Math.PI*2);ctx.fill();});
+ctx.globalAlpha=1;
+}
+function loop(){if(!running)return;update();draw();animId=requestAnimationFrame(loop);}
+async function gameOver(){
+running=false;cancelAnimationFrame(animId);
+document.getElementById('hud').style.display='none';
+document.getElementById('score-display').textContent=nickname+' — '+score+'점';
+document.getElementById('gameover-screen').style.display='flex';
+await SB.from('scores').insert({game_date:'2026-04-28',nickname,score});
+const {data}=await SB.from('scores').select('nickname,score').eq('game_date','2026-04-28').order('score',{ascending:false}).limit(5);
+const lb=document.getElementById('lb-rows');
+lb.innerHTML=(data||[]).map((r,i)=>`<div class="lb-row"><span>${['🥇','🥈','🥉','4️⃣','5️⃣'][i]} ${r.nickname}</span><span>${r.score}</span></div>`).join('')||'기록 없음';
+}
+</script>
+</body>
+</html>
