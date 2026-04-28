@@ -250,14 +250,14 @@ def save_used_games(used: list):
 
 
 def pick_combo(used: list) -> tuple[str, str]:
+    import random
     used_set = {(g["genre"], g["theme"]) for g in used}
-    for genre in GENRES:
-        for theme in THEMES:
-            if (genre, theme) not in used_set:
-                return genre, theme
-    # 전부 사용했으면 초기화
-    save_used_games([])
-    return GENRES[0], THEMES[0]
+    remaining = [(g, t) for g in GENRES for t in THEMES if (g, t) not in used_set]
+    if not remaining:
+        # 전부 사용했으면 초기화
+        save_used_games([])
+        remaining = [(g, t) for g in GENRES for t in THEMES]
+    return random.choice(remaining)
 
 
 def is_html_complete(html: str) -> bool:
