@@ -20,7 +20,7 @@ SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_ANON_KEY = os.environ["SUPABASE_ANON_KEY"]
 ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
 
-GENRES = ["슈팅", "퍼즐", "아케이드", "디펜스", "레이싱", "리듬", "생존", "클리커", "플랫폼", "캐주얼"]
+GENRES = ["슈팅", "퍼즐", "아케이드", "디펜스", "레이싱", "리듬", "생존", "클리커", "플랫폼", "달리기", "매치3", "낚시", "블록깨기", "퀴즈"]
 THEMES = ["우주", "바다", "숲", "도시", "판타지", "음식", "동물", "스포츠", "복고", "미래"]
 
 MAX_RETRIES = 3
