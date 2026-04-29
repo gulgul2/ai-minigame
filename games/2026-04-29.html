@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>우주 플랫폼</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#000;overflow:hidden;font-family:'Arial',sans-serif;}
+canvas{position:fixed;top:0;left:0;z-index:1;width:100%;height:100%;}
+#nickScreen,#overScreen{position:fixed;z-index:10;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,30,0.95);}
+h1{color:#7df;font-size:2em;margin-bottom:20px;text-shadow:0 0 20px #0af;}
+.nbtns{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;margin-bottom:24px;}
+.nbtn{padding:14px 24px;font-size:1.1em;border:2px solid #0af;background:transparent;color:#7df;border-radius:8px;cursor:pointer;transition:all .2s;}
+.nbtn.sel,.nbtn:hover{background:#0af;color:#000;}
+#startBtn,#restartBtn{padding:14px 40px;font-size:1.2em;background:#0af;color:#000;border:none;border-radius:10px;cursor:pointer;font-weight:bold;margin-top:10px;}
+#hud{position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:5;color:#7df;font-size:1.2em;text-shadow:0 0 8px #0af;pointer-events:none;}
+#overScreen h2{color:#f74;font-size:1.8em;margin-bottom:10px;}
+#overScore{color:#fff;font-size:1.3em;margin-bottom:16px;}
+#board{color:#aef;font-size:1em;text-align:center;margin-bottom:16px;line-height:1.8em;}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">점수: <span id="scoreHud">0</span></div>
+<div id="nickScreen">
+  <h1>🚀 우주 플랫폼</h1>
+  <div class="nbtns">
+    <button class="nbtn" onclick="selNick(this,'태형')">태형</button>
+    <button class="nbtn" onclick="selNick(this,'상이')">상이</button>
+    <button class="nbtn" onclick="selNick(this,'세준')">세준</button>
+    <button class="nbtn" onclick="selNick(this,'영근')">영근</button>
+  </div>
+  <button id="startBtn" onclick="startGame()">START</button>
+</div>
+<div id="overScreen" style="display:none;">
+  <h2>💀 게임 오버</h2>
+  <div id="overScore"></div>
+  <div id="board"></div>
+  <button id="restartBtn" onclick="resetGame()">다시하기</button>
+</div>
+<script>
+const SB=window.supabase.createClient('https://zypthfexxjcsguycjggr.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5cHRoZmV4eGpjc2d1eWNqZ2dyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3Njc2NzksImV4cCI6MjA5MjM0MzY3OX0.HaC4ltXQrO7_BQCeLqBVtvCBs4wL3Hzy6Ow_mO24vs0');
+const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+let W,H,nick='',score=0,raf,running=false,stars=[];
+let player,platforms,enemies,bullets,camY,spawnY,keys={},lastT=0,jumpHeld=false,shootCool=0;
+function selNick(el,n){document.querySelectorAll('.nbtn').forEach(b=>b.classList.remove('sel'));el.classList.add('sel');nick=n;}
+function resize(){W=cv.width=window.innerWidth;H=cv.height=window.innerHeight;}
+window.addEventListener('resize',resize);resize();
+function mkStars(){stars=[];for(let i=0;i<120;i++)stars.push({x:Math.random()*2000,y:Math.random()*4000,r:Math.random()*1.5+.5});}
+function initGame(){
+  camY=0;spawnY=0;score=0;shootCool=0;
+  player={x:W/2-15,y:H-120,w:30,h:36,vx:0,vy:0,onGround:false,dir:1,frame:0,ft:0};
+  platforms=[];enemies=[];bullets=[];
+  for(let i=0;i<12;i++)spawnPlatform();
+  mkStars();
+}
+function spawnPlatform(){
+  const pw=80+Math.random()*80,px=Math.random()*(W-pw),py=spawnY-80-Math.random()*60;
+  platforms.push({x:px,y:py,w:pw,h:12,has:Math.random()<.3});
+  if(Math.random()<.25)enemies.push({x:px+pw/2-12,y:py-28,w:24,h:24,vx:1+Math.random(),dir:1,hp:2});
+  spawnY=py;
+}
+function startGame(){if(!nick)return alert('닉네임을 선택해!');document.getElementById('nickScreen').style.display='none';document.getElementById('hud').style.display='block';initGame();running=true;lastT=performance.now();raf=requestAnimationFrame(loop);}
+function resetGame(){document.getElementById('overScreen').style.display='none';initGame();running=true;lastT=performance.now();raf=requestAnimationFrame(loop);}
+function loop(t){if(!running)return;const dt=Math.min((t-lastT)/1000,0.05);lastT=t;update(dt);draw();raf=requestAnimationFrame(loop);}
+function update(dt){
+  score+=dt*10|0;document.getElementById('scoreHud').textContent=score;
+  shootCool-=dt;
+  if(jumpHeld&&player.onGround){player.vy=-680;player.onGround=false;}
+  let ax=0;
+  if(keys['ArrowLeft']||keys['a'])ax=-1;
+  if(keys['ArrowRight']||keys['d'])ax=1;
+  player.vx=ax*220;
+  player.vy+=1600*dt;
+  player.x+=player.vx*dt;player.y+=player.vy*dt;
+  if(player.x<0)player.x=0;if(player.x+player.w>W)player.x=W-player.w;
+  if(ax!==0)player.dir=ax>0?1:-1;
+  player.ft+=dt;if(player.ft>.12){player.frame=(player.frame+1)%4;player.ft=0;}
+  player.onGround=false;
+  for(let p of platforms){if(player.vy>=0&&player.x+player.w>p.x&&player.x<p.x+p.w&&player.y+player.h>p.y&&player.y+player.h<p.y+p.h+20){player.y=p.y-player.h;player.vy=0;player.onGround=true;}}
+  const topEdge=player.y-camY;if(topEdge<H*.4)camY=player.y-H*.4;
+  bullets=bullets.filter(b=>{b.y+=b.vy*dt;return b.y>camY-20&&b.y<camY+H+20;});
+  enemies.forEach(e=>{e.x+=e.vx*e.dir*dt*60;if(e.x<0||e.x+e.w>W)e.dir*=-1;});
+  bullets.forEach(b=>{enemies.forEach(e=>{if(b.x>e.x&&b.x<e.x+e.w&&b.y>e.y&&b.y<e.y+e.h){e.hp--;b.dead=true;score+=50;}});});
+  bullets=bullets.filter(b=>!b.dead);
+  enemies=enemies.filter(e=>{if(e.hp<=0){score+=100;return false;}return true;});
+  for(let e of enemies){if(player.x+player.w>e.x&&player.x<e.x+e.w&&player.y+player.h>e.y&&player.y<e.y+e.h){gameOver();return;}}
+  if(player.y>camY+H+100){gameOver();return;}
+  while(platforms.length<18)spawnPlatform();
+  platforms=platforms.filter(p=>p.y<camY+H+200);
+  enemies=enemies.filter(e=>e.y<camY+H+200);
+}
+function shoot(){if(shootCool>0)return;bullets.push({x:player.x+player.w/2,y:player.y,vy:-900});shootCool=.25;}
+function draw(){
+  ctx.fillStyle='#000010';ctx.fillRect(0,0,W,H);
+  ctx.save();
+  for(let s of stars){const sy=(s.y-camY*.3)%H;ctx.fillStyle='rgba(180,220,255,0.8)';ctx.beginPath();ctx.arc(s.x%W,sy<0?sy+H:sy,s.r,0,Math.PI*2);ctx.fill();}
+  ctx.translate(0,-camY);
+  for(let p of platforms){
+    const g=ctx.createLinearGradient(p.x,p.y,p.x,p.y+p.h);g.addColorStop(0,'#0af');g.addColorStop(1,'#037');
+    ctx.fillStyle=g;ctx.fillRect(p.x,p.y,p.w,p.h);
+    if(p.has){ctx.fillStyle='#ff0';ctx.beginPath();ctx.arc(p.x+p.w/2,p.y-8,6,0,Math.PI*2);ctx.fill();}
+  }
+  for(let e of enemies){
+    ctx.fillStyle='#f44';ctx.fillRect(e.x,e.y,e.w,e.h);
+    ctx.fillStyle='#ff0';ctx.fillRect(e.x+6,e.y+6,5,5);ctx.fillRect(e.x+13,e.y+6,5,5);
+    ctx.fillStyle='#f44';ctx.fillRect(e.x+4,e.y+16,16,4);
+  }
+  for(let b of bullets){ctx.fillStyle='#ff0';ctx.fillRect(b.x-3,b.y-8,6,14);ctx.fillStyle='#fff';ctx.fillRect(b.x-1,b.y-6,2,10);}
+  const px=player.x,py=player.y,pw=player.w,ph=player.h;
+  ctx.fillStyle='#4af';ctx.fillRect(px+4,py+10,pw-8,ph-10);
+  ctx.fillStyle='#fda';ctx.fillRect(px+6,py,pw-12,14);
+  ctx.fillStyle='#ff0';ctx.fillRect(px+(player.dir>0?pw-4:0),py+14,4,10);
+  const bob=Math.sin(player.frame*Math.PI/2)*3;
+  ctx.fillStyle='#4af';ctx.fillRect(px-4,py+12+bob,6,10);ctx.fillRect(px+pw-2,py+12-bob,6,10);
+  ctx.fillStyle='#fda';ctx.font='bold 14px Arial';ctx.textAlign='center';ctx.fillText(nick,px+pw/2,py-6);
+  ctx.restore();
+}
+async function gameOver(){
+  running=false;cancelAnimationFrame(raf);
+  document.getElementById('overScore').textContent=`${nick}의 점수: ${score}`;
+  document.getElementById('overScreen').style.display='flex';
+  await SB.from('scores').insert({game_date:'2026-04-29',nickname:nick,score});
+  const{data}=await SB.from('scores').select('nickname,score').eq('game_date','2026-04-29').order('score',{ascending:false}).limit(5);
+  let html='<b>🏆 리더보드</b><br>';
+  if(data)data.forEach((r,i)=>html+=`${['🥇','🥈','🥉','4️⃣','5️⃣'][i]} ${r.nickname} - ${r.score}<br>`);
+  document.getElementById('board').innerHTML=html;
+}
+window.addEventListener('keydown',e=>{keys[e.key]=true;if(e.key===' '||e.key==='ArrowUp'){jumpHeld=true;}if(e.key==='z'||e.key==='Z')shoot();});
+window.addEventListener('keyup',e=>{keys[e.key]=false;if(e.key===' '||e.key==='ArrowUp')jumpHeld=false;});
+let touchX=null,touchY=null,touchStartX=null;
+cv.addEventListener('touchstart',e=>{e.preventDefault();const t=e.touches[0];touchX=t.clientX;touchY=t.clientY;touchStartX=t.clientX;jumpHeld=true;},{passive:false});
+cv.addEventListener('touchmove',e=>{e.preventDefault();const t=e.touches[0];const dx=t.clientX-touchStartX;if(Math.abs(dx)>20){keys['ArrowLeft']=dx<0;keys['ArrowRight']=dx>0;}},{passive:false});
+cv.addEventListener('touchend',e=>{e.preventDefault();jumpHeld=false;keys['ArrowLeft']=false;keys['ArrowRight']=false;shoot();},{passive:false});
+cv.addEventListener('mousedown',e=>{jumpHeld=true;touchStartX=e.clientX;});
+cv.addEventListener('mousemove',e=>{if(e.buttons===1){const dx=e.clientX-touchStartX;keys['ArrowLeft']=dx<-20;keys['ArrowRight']=dx>20;}});
+cv.addEventListener('mouseup',e=>{jumpHeld=false;keys['ArrowLeft']=false;keys['ArrowRight']=false;shoot();});
+</script>
+</body>
+</html>
