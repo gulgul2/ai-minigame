@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>동물 블록깨기</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#1a1a2e;font-family:'Arial',sans-serif;overflow:hidden;}
+canvas{position:fixed;top:0;left:0;z-index:1;width:100%;height:100%;}
+#nickScreen,#overScreen{position:fixed;z-index:10;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#1a1a2e,#16213e,#0f3460);}
+h1{color:#e94560;font-size:2em;margin-bottom:10px;text-shadow:0 0 20px #e94560;}
+.sub{color:#a8dadc;font-size:1em;margin-bottom:30px;}
+.nick-btns{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;}
+.nick-btn{padding:14px 28px;border:2px solid #a8dadc;background:transparent;color:#a8dadc;font-size:1.1em;border-radius:12px;cursor:pointer;transition:all .2s;}
+.nick-btn.selected,.nick-btn:hover{background:#e94560;border-color:#e94560;color:#fff;}
+#startBtn,#retryBtn{padding:14px 40px;background:#e94560;color:#fff;border:none;font-size:1.2em;border-radius:12px;cursor:pointer;margin-top:10px;}
+#hud{position:fixed;top:10px;left:0;width:100%;z-index:5;display:flex;justify-content:space-between;padding:0 16px;pointer-events:none;}
+#hud span{color:#fff;font-size:1em;background:rgba(0,0,0,.4);padding:4px 12px;border-radius:20px;}
+#overScreen h2{color:#a8dadc;font-size:1.5em;margin-bottom:8px;}
+#finalScore{color:#e94560;font-size:2.5em;font-weight:bold;margin-bottom:20px;}
+#board{color:#ddd;font-size:.95em;width:260px;margin-bottom:20px;}
+#board li{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #333;}
+#board li:first-child{color:#ffd700;}
+#board li:nth-child(2){color:#c0c0c0;}
+#board li:nth-child(3){color:#cd7f32;}
+</style>
+</head>
+<body>
+<div id="nickScreen">
+  <h1>🐾 동물 블록깨기</h1>
+  <p class="sub">닉네임을 선택하세요</p>
+  <div class="nick-btns">
+    <button class="nick-btn" onclick="selectNick(this,'태형')">태형</button>
+    <button class="nick-btn" onclick="selectNick(this,'상이')">상이</button>
+    <button class="nick-btn" onclick="selectNick(this,'세준')">세준</button>
+    <button class="nick-btn" onclick="selectNick(this,'영근')">영근</button>
+  </div>
+  <button id="startBtn" onclick="startGame()">START 🚀</button>
+</div>
+<div id="hud" style="display:none"><span id="hudNick"></span><span>점수: <b id="hudScore">0</b></span><span>❤️ <b id="hudLife">3</b></span></div>
+<canvas id="c"></canvas>
+<div id="overScreen" style="display:none">
+  <h1>🐾 GAME OVER</h1>
+  <h2 id="overNick"></h2>
+  <div id="finalScore">0</div>
+  <ol id="board"></ol>
+  <button id="retryBtn" onclick="location.reload()">다시하기 🔄</button>
+</div>
+<script>
+const SB=window.supabase.createClient('https://zypthfexxjcsguycjggr.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5cHRoZmV4eGpjc2d1eWNqZ2dyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3Njc2NzksImV4cCI6MjA5MjM0MzY3OX0.HaC4ltXQrO7_BQCeLqBVtvCBs4wL3Hzy6Ow_mO24vs0');
+const ANIMALS=['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯','🦁','🐮'];
+const COLS=window.innerWidth<400?6:8,ROWS=4;
+let nickname='',score=0,lives=3,running=false,animId;
+const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+let W,H,px,py,pw,ph=14,bx,by,br=8,vx,vy,blocks=[],dragging=false,lastX;
+function resize(){W=cv.width=window.innerWidth;H=cv.height=window.innerHeight;pw=W*.18;ph=14;py=H-60;if(!running){px=W/2-pw/2;}}
+window.addEventListener('resize',resize);resize();
+function selectNick(el,n){document.querySelectorAll('.nick-btn').forEach(b=>b.classList.remove('selected'));el.classList.add('selected');nickname=n;}
+function initBlocks(){blocks=[];const bw=(W-40)/COLS,bh=32;for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){blocks.push({x:20+c*bw+2,y:60+r*(bh+4),w:bw-4,h:bh,alive:true,emoji:ANIMALS[(r*COLS+c)%ANIMALS.length],hp:r<2?1:2});}}
+function startGame(){if(!nickname){alert('닉네임을 선택해주세요!');return;}document.getElementById('nickScreen').style.display='none';document.getElementById('hud').style.display='flex';document.getElementById('hudNick').textContent=nickname;resize();px=W/2-pw/2;py=H-60;bx=W/2;by=py-br-2;vx=(Math.random()>.5?1:-1)*4;vy=-5;score=0;lives=3;running=true;initBlocks();updateHUD();loop();}
+function updateHUD(){document.getElementById('hudScore').textContent=score;document.getElementById('hudLife').textContent=lives;}
+function loop(){if(!running)return;animId=requestAnimationFrame(loop);ctx.clearRect(0,0,W,H);drawBG();drawBlocks();drawPaddle();drawBall();moveBall();}
+function drawBG(){ctx.fillStyle='#1a1a2e';ctx.fillRect(0,0,W,H);}
+function drawPaddle(){const r=ph/2;ctx.beginPath();ctx.roundRect(px,py,pw,ph,r);ctx.fillStyle='#e94560';ctx.fill();ctx.strokeStyle='#ff8fab';ctx.lineWidth=2;ctx.stroke();}
+function drawBall(){ctx.beginPath();ctx.arc(bx,by,br,0,Math.PI*2);ctx.fillStyle='#ffd700';ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.stroke();}
+function drawBlocks(){blocks.forEach(b=>{if(!b.alive)return;ctx.beginPath();ctx.roundRect(b.x,b.y,b.w,b.h,6);ctx.fillStyle=b.hp>1?'#4a90d9':'#a8dadc';ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=1;ctx.stroke();ctx.font=`${b.h*.7}px serif`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(b.emoji,b.x+b.w/2,b.y+b.h/2);});}
+function moveBall(){bx+=vx;by+=vy;if(bx-br<0){bx=br;vx=Math.abs(vx);}if(bx+br>W){bx=W-br;vx=-Math.abs(vx);}if(by-br<0){by=br;vy=Math.abs(vy);}if(by+br>H+50){lives--;updateHUD();if(lives<=0){endGame();return;}bx=W/2;by=py-br-2;vx=(Math.random()>.5?1:-1)*4;vy=-5;}if(by+br>=py&&by+br<=py+ph&&bx>=px-br&&bx<=px+pw+br&&vy>0){vy=-Math.abs(vy);let hit=(bx-(px+pw/2))/(pw/2);vx=hit*6;}blocks.forEach(b=>{if(!b.alive)return;if(bx+br>b.x&&bx-br<b.x+b.w&&by+br>b.y&&by-br<b.y+b.h){b.hp--;if(b.hp<=0){b.alive=true;b.alive=false;score+=10;}else score+=5;vy=-vy;updateHUD();}});if(blocks.every(b=>!b.alive)){score+=100;initBlocks();updateHUD();}}
+async function endGame(){running=false;cancelAnimationFrame(animId);document.getElementById('hud').style.display='none';document.getElementById('overScreen').style.display='flex';document.getElementById('overNick').textContent=nickname+'님의 점수';document.getElementById('finalScore').textContent=score;await SB.from('scores').insert({game_date:'2026-04-30',nickname,score});const{data}=await SB.from('scores').select('nickname,score').eq('game_date','2026-04-30').order('score',{ascending:false}).limit(5);const ol=document.getElementById('board');ol.innerHTML='';(data||[]).forEach((r,i)=>{const li=document.createElement('li');li.innerHTML=`<span>${['🥇','🥈','🥉','4️⃣','5️⃣'][i]} ${r.nickname}</span><span>${r.score}점</span>`;ol.appendChild(li);});}
+function getX(e){return e.touches?e.touches[0].clientX:e.clientX;}
+cv.addEventListener('mousedown',e=>{dragging=true;lastX=getX(e);});
+cv.addEventListener('mousemove',e=>{if(!dragging)return;const nx=getX(e);px+=nx-lastX;lastX=nx;px=Math.max(0,Math.min(W-pw,px));});
+cv.addEventListener('mouseup',()=>dragging=false);
+cv.addEventListener('touchstart',e=>{e.preventDefault();dragging=true;lastX=getX(e);},{passive:false});
+cv.addEventListener('touchmove',e=>{e.preventDefault();if(!dragging)return;const nx=getX(e);px+=nx-lastX;lastX=nx;px=Math.max(0,Math.min(W-pw,px));},{passive:false});
+cv.addEventListener('touchend',e=>{e.preventDefault();dragging=false;},{passive:false});
+</script>
+</body>
+</html>
