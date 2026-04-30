@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>푸드 캐치 2026</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#1a1a2e;font-family:'Arial',sans-serif;overflow:hidden;}
+canvas{position:fixed;top:0;left:0;z-index:1;width:100%;height:100%;}
+#nickname-screen,#gameover-screen{position:fixed;z-index:10;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#1a1a2e,#16213e,#0f3460);}
+h1{color:#f5a623;font-size:2.2em;margin-bottom:10px;text-shadow:0 0 20px #f5a623;}
+.subtitle{color:#e94560;font-size:1em;margin-bottom:30px;}
+.nick-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:25px;}
+.nick-btn{padding:14px 28px;font-size:1.1em;border:2px solid #f5a623;background:transparent;color:#f5a623;border-radius:12px;cursor:pointer;transition:all .2s;}
+.nick-btn.selected,.nick-btn:hover{background:#f5a623;color:#1a1a2e;transform:scale(1.05);}
+#start-btn,#restart-btn{padding:14px 40px;font-size:1.2em;background:linear-gradient(90deg,#e94560,#f5a623);color:#fff;border:none;border-radius:20px;cursor:pointer;margin-top:10px;font-weight:bold;box-shadow:0 4px 20px rgba(229,69,96,.5);}
+#hud{position:fixed;top:10px;left:0;width:100%;z-index:5;display:flex;justify-content:space-between;padding:0 15px;pointer-events:none;}
+.hud-box{background:rgba(0,0,0,.6);color:#f5a623;padding:6px 14px;border-radius:10px;font-size:1em;font-weight:bold;}
+#score-display{color:#fff;font-size:1.6em;margin:10px 0;}
+#leaderboard{width:85%;max-width:320px;background:rgba(255,255,255,.07);border-radius:14px;padding:15px;margin:15px 0;}
+#leaderboard h3{color:#f5a623;text-align:center;margin-bottom:10px;}
+.lb-row{display:flex;justify-content:space-between;color:#fff;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.1);font-size:.95em;}
+.lb-row:last-child{border:none;}
+.lb-rank{color:#f5a623;font-weight:bold;width:30px;}
+</style>
+</head>
+<body>
+<div id="nickname-screen">
+  <h1>🍔 푸드 캐치!</h1>
+  <div class="subtitle">떨어지는 음식을 받아라!</div>
+  <div class="nick-grid">
+    <button class="nick-btn" onclick="selectNick(this,'태형')">태형</button>
+    <button class="nick-btn" onclick="selectNick(this,'상이')">상이</button>
+    <button class="nick-btn" onclick="selectNick(this,'세준')">세준</button>
+    <button class="nick-btn" onclick="selectNick(this,'영근')">영근</button>
+  </div>
+  <button id="start-btn" onclick="startGame()">START</button>
+</div>
+<div id="hud" style="display:none;">
+  <div class="hud-box" id="hud-nick"></div>
+  <div class="hud-box">점수: <span id="hud-score">0</span></div>
+  <div class="hud-box">생명: <span id="hud-life">❤️❤️❤️</span></div>
+</div>
+<canvas id="c"></canvas>
+<div id="gameover-screen" style="display:none;">
+  <h1>💀 게임 오버!</h1>
+  <div id="score-display"></div>
+  <div id="leaderboard"><h3>🏆 리더보드</h3><div id="lb-rows">로딩중...</div></div>
+  <button id="restart-btn" onclick="location.reload()">다시하기</button>
+</div>
+<script>
+const SB=window.supabase.createClient('https://zypthfexxjcsguycjggr.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5cHRoZmV4eGpjc2d1eWNqZ2dyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3Njc2NzksImV4cCI6MjA5MjM0MzY3OX0.HaC4ltXQrO7_BQCeLqBVtvCBs4wL3Hzy6Ow_mO24vs0');
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+let W,H,nickname='',score=0,lives=3,gameRunning=false,foods=[],particles=[],basketX,basketW,lastTime=0,spawnTimer=0,spawnInterval=1200,level=1,frame=0;
+const FOODS=['🍕','🍔','🌮','🍜','🍣','🍩','🍦','🍎','🥝','🧁','🌽','🥪'];
+const BAD=['💀','🦠','🤢'];
+function resize(){W=canvas.width=window.innerWidth;H=canvas.height=window.innerHeight;basketX=W/2;basketW=Math.min(W*0.18,90);}
+window.addEventListener('resize',resize);resize();
+function selectNick(btn,name){document.querySelectorAll('.nick-btn').forEach(b=>b.classList.remove('selected'));btn.classList.add('selected');nickname=name;}
+function startGame(){if(!nickname)return alert('닉네임을 선택하세요!');document.getElementById('nickname-screen').style.display='none';document.getElementById('hud').style.display='flex';document.getElementById('hud-nick').textContent=nickname;gameRunning=true;basketX=W/2;requestAnimationFrame(loop);}
+function spawnFood(){const isBad=Math.random()<0.2+level*0.02;const list=isBad?BAD:FOODS;const em=list[Math.floor(Math.random()*list.length)];foods.push({x:Math.random()*(W-40)+20,y:-30,vy:2+level*0.4+Math.random()*2,em,bad:isBad,size:30+Math.random()*10});}
+function addParticles(x,y,good){for(let i=0;i<8;i++){particles.push({x,y,vx:(Math.random()-0.5)*5,vy:(Math.random()-2)*4,life:1,color:good?'#f5a623':'#e94560',r:4+Math.random()*4});}}
+function updateHUD(){document.getElementById('hud-score').textContent=score;let h='';for(let i=0;i<lives;i++)h+='❤️';document.getElementById('hud-life').textContent=h||'💔';}
+function loop(ts){if(!gameRunning)return;const dt=Math.min(ts-lastTime,50);lastTime=ts;frame++;ctx.clearRect(0,0,W,H);
+drawBG();
+spawnTimer+=dt;if(spawnTimer>spawnInterval){spawnTimer=0;spawnFood();spawnInterval=Math.max(500,1200-level*60);}
+level=1+Math.floor(score/200);
+const bx=basketX,bw=basketW,by=H-60,bh=22;
+foods=foods.filter(f=>{f.y+=f.vy;const hit=Math.abs(f.x-bx)<bw&&f.y+f.size/2>by&&f.y-f.size/2<by+bh;if(hit){if(f.bad){lives--;addParticles(f.x,f.y,false);}else{score+=10*level;addParticles(f.x,f.y,true);}updateHUD();if(lives<=0){endGame();return false;}return false;}if(f.y>H+40){if(!f.bad){}return false;}ctx.font=f.size+'px serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(f.em,f.x,f.y);return true;});
+particles=particles.filter(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=0.2;p.life-=0.04;ctx.globalAlpha=p.life;ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;return p.life>0;});
+drawBasket(bx,by,bw,bh);
+requestAnimationFrame(loop);}
+function drawBG(){const g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,'#1a1a2e');g.addColorStop(1,'#0f3460');ctx.fillStyle=g;ctx.fillRect(0,0,W,H);if(frame%3===0)return;for(let i=0;i<3;i++){ctx.fillStyle='rgba(245,166,35,0.04)';ctx.beginPath();ctx.arc(Math.sin(frame/300+i)*W/2+W/2,Math.cos(frame/200+i)*H/2+H/2,80+i*30,0,Math.PI*2);ctx.fill();}}
+function drawBasket(x,y,w,h){ctx.save();ctx.strokeStyle='#f5a623';ctx.lineWidth=4;ctx.lineJoin='round';ctx.beginPath();ctx.moveTo(x-w,y);ctx.lineTo(x+w,y);ctx.lineTo(x+w*0.8,y+h);ctx.lineTo(x-w*0.8,y+h);ctx.closePath();const g=ctx.createLinearGradient(x-w,y,x+w,y);g.addColorStop(0,'rgba(229,69,96,0.7)');g.addColorStop(1,'rgba(245,166,35,0.7)');ctx.fillStyle=g;ctx.fill();ctx.stroke();ctx.restore();}
+let dragging=false,touchId=null;
+function getX(e){return e.clientX!==undefined?e.clientX:e.touches[0].clientX;}
+canvas.addEventListener('mousedown',e=>{dragging=true;basketX=getX(e);});
+canvas.addEventListener('mousemove',e=>{if(dragging)basketX=Math.max(basketW,Math.min(W-basketW,getX(e)));});
+canvas.addEventListener('mouseup',()=>dragging=false);
+canvas.addEventListener('touchstart',e=>{e.preventDefault();touchId=e.touches[0].identifier;basketX=e.touches[0].clientX;},{passive:false});
+canvas.addEventListener('touchmove',e=>{e.preventDefault();for(let t of e.changedTouches){if(t.identifier===touchId)basketX=Math.max(basketW,Math.min(W-basketW,t.clientX));}},{passive:false});
+canvas.addEventListener('touchend',e=>{e.preventDefault();touchId=null;},{passive:false});
+async function endGame(){gameRunning=false;document.getElementById('gameover-screen').style.display='flex';document.getElementById('score-display').textContent=nickname+'님의 점수: '+score+'점';try{await SB.from('scores').insert({game_date:'2026-05-01',nickname,score});}catch(e){}try{const{data}=await SB.from('scores').select('nickname,score').eq('game_date','2026-05-01').order('score',{ascending:false}).limit(5);let html='';(data||[]).forEach((r,i)=>{html+=`<div class="lb-row"><span class="lb-rank">${i+1}위</span><span>${r.nickname}</span><span>${r.score}점</span></div>`;});document.getElementById('lb-rows').innerHTML=html||'기록 없음';}catch(e){document.getElementById('lb-rows').textContent='불러오기 실패';}}
+</script>
+</body>
+</html>
