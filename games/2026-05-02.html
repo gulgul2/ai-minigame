@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>음식 퍼즐</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#1a1a2e;font-family:'Arial',sans-serif;overflow:hidden;}
+canvas{position:fixed;top:0;left:0;z-index:1;width:100%;height:100%;}
+#nickScreen,#overScreen{position:fixed;z-index:10;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(26,26,46,0.97);}
+h1{color:#ff6b6b;font-size:2em;margin-bottom:10px;text-shadow:0 0 20px #ff6b6b;}
+.sub{color:#ffd93d;font-size:1em;margin-bottom:30px;}
+.nick-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:25px;}
+.nick-btn{padding:14px 28px;border:3px solid #4ecdc4;background:transparent;color:#4ecdc4;font-size:1.1em;border-radius:12px;cursor:pointer;transition:.2s;}
+.nick-btn.sel{background:#4ecdc4;color:#1a1a2e;font-weight:bold;}
+#startBtn,#retryBtn{padding:14px 40px;background:#ff6b6b;border:none;color:#fff;font-size:1.2em;border-radius:14px;cursor:pointer;font-weight:bold;margin-top:8px;}
+#scoreDisp{color:#ffd93d;font-size:1.5em;margin-bottom:15px;}
+#board{background:rgba(255,255,255,0.05);border-radius:12px;padding:15px;margin-bottom:15px;min-width:240px;}
+.lb-row{color:#ccc;font-size:1em;padding:4px 0;}
+.lb-row span{color:#ffd93d;}
+#hud{position:fixed;top:10px;left:0;width:100%;z-index:5;display:flex;justify-content:space-between;padding:0 16px;pointer-events:none;}
+.hud-box{background:rgba(0,0,0,0.6);color:#ffd93d;padding:6px 14px;border-radius:10px;font-size:1em;font-weight:bold;}
+</style>
+</head>
+<body>
+<div id="nickScreen">
+  <h1>🍔 푸드 퍼즐</h1>
+  <div class="sub">같은 음식 3개 이상 연결!</div>
+  <div class="nick-grid">
+    <button class="nick-btn" onclick="selNick(this,'태형')">태형</button>
+    <button class="nick-btn" onclick="selNick(this,'상이')">상이</button>
+    <button class="nick-btn" onclick="selNick(this,'세준')">세준</button>
+    <button class="nick-btn" onclick="selNick(this,'영근')">영근</button>
+  </div>
+  <button id="startBtn" onclick="startGame()">START</button>
+</div>
+<div id="hud" style="display:none;">
+  <div class="hud-box" id="nickHud"></div>
+  <div class="hud-box">점수: <span id="scoreHud">0</span></div>
+  <div class="hud-box">⏱ <span id="timeHud">60</span></div>
+</div>
+<canvas id="c"></canvas>
+<div id="overScreen" style="display:none;">
+  <h1>🍽 게임 종료!</h1>
+  <div id="scoreDisp"></div>
+  <div id="board"></div>
+  <button id="retryBtn" onclick="location.reload()">다시하기</button>
+</div>
+<script>
+const SB=window.supabase.createClient('https://zypthfexxjcsguycjggr.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5cHRoZmV4eGpjc2d1eWNqZ2dyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3Njc2NzksImV4cCI6MjA5MjM0MzY3OX0.HaC4ltXQrO7_BQCeLqBVtvCBs4wL3Hzy6Ow_mO24vs0');
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+const FOODS=['🍔','🍕','🍣','🍩','🌮','🍦','🍓','🥝'];
+const COLS=6,ROWS=8;
+let grid=[],score=0,nickname='',timer=60,timerInt=null,gameActive=false;
+let sel=[],dragging=false;
+let cw,ch,cellW,cellH,offX,offY;
+
+function selNick(el,n){document.querySelectorAll('.nick-btn').forEach(b=>b.classList.remove('sel'));el.classList.add('sel');nickname=n;}
+function resize(){cw=canvas.width=window.innerWidth;ch=canvas.height=window.innerHeight;cellW=Math.min(cw/COLS,ch/ROWS)*0.88;cellH=cellW;offX=(cw-cellW*COLS)/2;offY=(ch-cellH*ROWS)/2;}
+window.addEventListener('resize',()=>{resize();if(gameActive)drawGrid();});
+resize();
+
+function mkGrid(){grid=[];for(let r=0;r<ROWS;r++){grid[r]=[];for(let c=0;c<COLS;c++)grid[r][c]=FOODS[Math.floor(Math.random()*FOODS.length)];}}
+function drawGrid(){
+  ctx.clearRect(0,0,cw,ch);
+  ctx.fillStyle='#16213e';ctx.fillRect(0,0,cw,ch);
+  for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){
+    let x=offX+c*cellW,y=offY+r*cellH;
+    let isSel=sel.some(s=>s[0]===r&&s[1]===c);
+    ctx.fillStyle=isSel?'rgba(255,217,61,0.35)':'rgba(255,255,255,0.07)';
+    ctx.beginPath();ctx.roundRect(x+2,y+2,cellW-4,cellH-4,10);ctx.fill();
+    if(isSel){ctx.strokeStyle='#ffd93d';ctx.lineWidth=3;ctx.stroke();}
+    if(grid[r][c]){ctx.font=`${cellW*0.55}px serif`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(grid[r][c],x+cellW/2,y+cellH/2);}
+  }
+  if(sel.length>1){
+    ctx.strokeStyle='rgba(255,217,61,0.7)';ctx.lineWidth=4;ctx.beginPath();
+    sel.forEach((s,i)=>{let x=offX+s[1]*cellW+cellW/2,y=offY+s[0]*cellH+cellH/2;i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);});
+    ctx.stroke();
+  }
+}
+function getCell(px,py){
+  let c=Math.floor((px-offX)/cellW),r=Math.floor((py-offY)/cellH);
+  if(r>=0&&r<ROWS&&c>=0&&c<COLS)return[r,c];return null;
+}
+function addToSel(cell){
+  if(!cell)return;
+  let[r,c]=cell;
+  if(sel.length===0){sel.push([r,c]);return;}
+  let last=sel[sel.length-1];
+  if(Math.abs(last[0]-r)<=1&&Math.abs(last[1]-c)<=1&&!(last[0]===r&&last[1]===c)){
+    if(grid[r][c]!==grid[sel[0][0]][sel[0][1]])return;
+    let ex=sel.findIndex(s=>s[0]===r&&s[1]===c);
+    if(ex>=0){sel=sel.slice(0,ex+1);}else{sel.push([r,c]);}
+  }
+}
+function commitSel(){
+  if(sel.length>=3){
+    let pts=sel.length*10+(sel.length>3?(sel.length-3)*5:0);
+    score+=pts;
+    document.getElementById('scoreHud').textContent=score;
+    sel.forEach(([r,c])=>grid[r][c]=null);
+    dropCells();
+    showFloatScore(pts,sel);
+  }
+  sel=[];drawGrid();
+}
+function dropCells(){
+  for(let c=0;c<COLS;c++){
+    let col=grid.map(r=>r[c]).filter(v=>v!==null);
+    while(col.length<ROWS)col.unshift(FOODS[Math.floor(Math.random()*FOODS.length)]);
+    for(let r=0;r<ROWS;r++)grid[r][c]=col[r];
+  }
+}
+function showFloatScore(pts,cells){
+  let[r0,c0]=cells[Math.floor(cells.length/2)];
+  let x=offX+c0*cellW+cellW/2,y=offY+r0*cellH;
+  let op=1,dy=0;
+  const anim=setInterval(()=>{
+    dy+=1.5;op-=0.04;
+    ctx.font='bold 22px Arial';ctx.fillStyle=`rgba(255,217,61,${op})`;
+    ctx.textAlign='center';ctx.fillText('+'+pts,x,y-dy);
+    if(op<=0)clearInterval(anim);
+  },30);
+}
+
+function getPos(e){
+  if(e.touches)return{x:e.touches[0].clientX,y:e.touches[0].clientY};
+  return{x:e.clientX,y:e.clientY};
+}
+canvas.addEventListener('mousedown',e=>{if(!gameActive)return;dragging=true;sel=[];let p=getPos(e);let cell=getCell(p.x,p.y);if(cell)sel.push(cell);drawGrid();});
+canvas.addEventListener('mousemove',e=>{if(!gameActive||!dragging)return;let p=getPos(e);addToSel(getCell(p.x,p.y));drawGrid();});
+canvas.addEventListener('mouseup',e=>{if(!gameActive)return;dragging=false;commitSel();});
+canvas.addEventListener('touchstart',e=>{e.preventDefault();if(!gameActive)return;dragging=true;sel=[];let p=getPos(e);let cell=getCell(p.x,p.y);if(cell)sel.push(cell);drawGrid();},{passive:false});
+canvas.addEventListener('touchmove',e=>{e.preventDefault();if(!gameActive||!dragging)return;let p=getPos(e);addToSel(getCell(p.x,p.y));drawGrid();},{passive:false});
+canvas.addEventListener('touchend',e=>{e.preventDefault();if(!gameActive)return;dragging=false;commitSel();},{passive:false});
+
+function startGame(){
+  if(!nickname){alert('닉네임을 선택하세요!');return;}
+  document.getElementById('nickScreen').style.display='none';
+  document.getElementById('hud').style.display='flex';
+  document.getElementById('nickHud').textContent=nickname;
+  mkGrid();resize();gameActive=true;score=0;timer=60;
+  document.getElementById('scoreHud').textContent=0;
+  document.getElementById('timeHud').textContent=60;
+  drawGrid();
+  timerInt=setInterval(()=>{
+    timer--;document.getElementById('timeHud').textContent=timer;
+    if(timer<=0){clearInterval(timerInt);gameActive=false;endGame();}
+  },1000);
+}
+async function endGame(){
+  document.getElementById('hud').style.display='none';
+  await SB.from('scores').insert({game_date:'2026-05-02',nickname,score});
+  const{data}=await SB.from('scores').select('nickname,score').eq('game_date','2026-05-02').order('score',{ascending:false}).limit(5);
+  document.getElementById('scoreDisp').textContent=`${nickname}의 점수: ${score}점`;
+  let html='<b style="color:#ffd93d">🏆 리더보드</b><br>';
+  (data||[]).forEach((d,i)=>{html+=`<div class="lb-row">${i+1}. <span>${d.nickname}</span> - ${d.score}점</div>`;});
+  document.getElementById('board').innerHTML=html;
+  document.getElementById('overScreen').style.display='flex';
+}
+</script>
+</body>
+</html>
