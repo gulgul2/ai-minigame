@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>바다 리듬</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#001a33;font-family:'Arial',sans-serif;overflow:hidden}
+canvas{position:fixed;top:0;left:0;z-index:1;width:100%;height:100%}
+#nickScreen,#overScreen{position:fixed;z-index:10;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,10,40,0.92)}
+h1{color:#00dfff;font-size:2em;margin-bottom:20px;text-shadow:0 0 20px #00dfff}
+.nickBtn{margin:8px;padding:14px 30px;font-size:1.1em;border:2px solid #00dfff;background:transparent;color:#fff;border-radius:30px;cursor:pointer;transition:all 0.2s}
+.nickBtn.active{background:#00dfff;color:#001a33}
+#startBtn,#retryBtn{margin-top:20px;padding:14px 40px;font-size:1.2em;background:#00dfff;color:#001a33;border:none;border-radius:30px;cursor:pointer;font-weight:bold}
+#overScreen h2{color:#fff;font-size:1.8em;margin-bottom:10px}
+#finalScore{color:#00dfff;font-size:2.5em;font-weight:bold;margin-bottom:20px}
+#leaderboard{color:#fff;font-size:1em;line-height:2em;margin-bottom:10px;text-align:center}
+.lbRow{display:flex;justify-content:space-between;gap:30px}
+.me{color:#00dfff;font-weight:bold}
+#hud{position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:5;color:#fff;font-size:1.2em;text-shadow:0 0 8px #00dfff}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">점수: <span id="scoreHud">0</span></div>
+<div id="nickScreen">
+  <h1>🌊 바다 리듬</h1>
+  <div id="nickBtns">
+    <button class="nickBtn" onclick="selectNick(this,'태형')">태형</button>
+    <button class="nickBtn" onclick="selectNick(this,'상이')">상이</button>
+    <button class="nickBtn" onclick="selectNick(this,'세준')">세준</button>
+    <button class="nickBtn" onclick="selectNick(this,'영근')">영근</button>
+  </div>
+  <button id="startBtn" onclick="startGame()">START</button>
+</div>
+<div id="overScreen" style="display:none">
+  <h2>게임 오버</h2>
+  <div id="finalScore">0</div>
+  <div id="leaderboard"></div>
+  <button id="retryBtn" onclick="retry()">다시하기</button>
+</div>
+<script>
+const SB=window.supabase.createClient('https://zypthfexxjcsguycjggr.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5cHRoZmV4eGpjc2d1eWNqZ2dyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3Njc2NzksImV4cCI6MjA5MjM0MzY3OX0.HaC4ltXQrO7_BQCeLqBVtvCBs4wL3Hzy6Ow_mO24vs0');
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+let W,H,nickname='',score=0,running=false,raf;
+let notes=[],lanes=4,laneW,hitY,particles=[];
+let bpm=120,interval,lastNote=0,noteSpeed=4,elapsed=0;
+const COLORS=['#00dfff','#00ffaa','#ff6b6b','#ffd93d'];
+function resize(){W=canvas.width=canvas.offsetWidth;H=canvas.height=canvas.offsetHeight;laneW=W/lanes;hitY=H-120}
+window.addEventListener('resize',resize);resize();
+function selectNick(el,n){document.querySelectorAll('.nickBtn').forEach(b=>b.classList.remove('active'));el.classList.add('active');nickname=n}
+function startGame(){if(!nickname)return;document.getElementById('nickScreen').style.display='none';score=0;notes=[];particles=[];elapsed=0;noteSpeed=4;running=true;document.getElementById('hud').style.display='block';document.getElementById('scoreHud').textContent=0;loop()}
+function retry(){document.getElementById('overScreen').style.display='none';startGame()}
+function spawnNote(){const l=Math.floor(Math.random()*lanes);notes.push({l,y:-30,hit:false})}
+function loop(){raf=requestAnimationFrame(loop);elapsed+=1000/60;const beat=60000/bpm;if(elapsed-lastNote>beat*0.8){spawnNote();if(Math.random()<0.3)spawnNote();lastNote=elapsed;if(elapsed>10000)noteSpeed=Math.min(8,noteSpeed+0.001)}
+ctx.clearRect(0,0,W,H);drawBg();drawLanes();drawHitZone();notes.forEach((n,i)=>{n.y+=noteSpeed;drawNote(n);if(n.y>H+40){if(!n.hit){score=Math.max(0,score-5);document.getElementById('scoreHud').textContent=score}notes.splice(i,1)}});particles=particles.filter(p=>{p.life>0;p.x+=p.vx;p.y+=p.vy;p.life-=3;ctx.globalAlpha=p.life/100;ctx.fillStyle=p.c;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;return p.life>0});drawScore();if(score<-30&&running){endGame()}}
+function drawBg(){const g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,'#001a33');g.addColorStop(1,'#003366');ctx.fillStyle=g;ctx.fillRect(0,0,W,H);for(let i=0;i<3;i++){ctx.strokeStyle=`rgba(0,180,255,${0.05+i*0.03})`;ctx.lineWidth=1;ctx.beginPath();const waveY=H*0.3+i*60;for(let x=0;x<=W;x+=5){ctx.lineTo(x,waveY+Math.sin((x/80)+(elapsed/800)+i)*12)}ctx.stroke()}}
+function drawLanes(){for(let i=0;i<=lanes;i++){ctx.strokeStyle='rgba(0,220,255,0.15)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(i*laneW,0);ctx.lineTo(i*laneW,H);ctx.stroke()}}
+function drawHitZone(){for(let i=0;i<lanes;i++){ctx.strokeStyle=COLORS[i];ctx.lineWidth=3;ctx.globalAlpha=0.5;ctx.beginPath();ctx.arc(i*laneW+laneW/2,hitY,30,0,Math.PI*2);ctx.stroke();ctx.globalAlpha=1}}
+function drawNote(n){const x=n.l*laneW+laneW/2;ctx.fillStyle=COLORS[n.l];ctx.shadowBlur=15;ctx.shadowColor=COLORS[n.l];ctx.beginPath();ctx.arc(x,n.y,22,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0}
+function drawScore(){ctx.fillStyle='rgba(0,220,255,0.8)';ctx.font='bold 20px Arial';ctx.textAlign='center'}
+function hitLane(px){const l=Math.floor(px/laneW);let best=null,bestD=80;notes.forEach(n=>{if(n.l===l&&!n.hit){const d=Math.abs(n.y-hitY);if(d<bestD){bestD=d;best=n}}});if(best){best.hit=true;const pts=bestD<20?100:bestD<40?60:30;score+=pts;document.getElementById('scoreHud').textContent=score;burst(best.l*laneW+laneW/2,hitY,COLORS[best.l]);const notes2=notes.indexOf(best);if(notes2>-1)notes.splice(notes2,1)}}
+function burst(x,y,c){for(let i=0;i<12;i++){particles.push({x,y,vx:(Math.random()-0.5)*5,vy:(Math.random()-0.5)*5,r:Math.random()*5+2,c,life:100})}}
+async function endGame(){running=false;cancelAnimationFrame(raf);await SB.from('scores').insert({game_date:'2026-05-03',nickname,score});const{data}=await SB.from('scores').select('nickname,score').eq('game_date','2026-05-03').order('score',{ascending:false}).limit(5);document.getElementById('finalScore').textContent=score+'점';let lb='<b>🏆 TOP 5</b><br>';if(data)data.forEach((r,i)=>{const me=r.nickname===nickname&&r.score===score;lb+=`<div class="lbRow${me?' me':''}"><span>${i+1}. ${r.nickname}</span><span>${r.score}점</span></div>`});document.getElementById('leaderboard').innerHTML=lb;document.getElementById('overScreen').style.display='flex'}
+canvas.addEventListener('touchstart',e=>{e.preventDefault();[...e.changedTouches].forEach(t=>hitLane(t.clientX))},{passive:false});
+canvas.addEventListener('touchmove',e=>e.preventDefault(),{passive:false});
+canvas.addEventListener('touchend',e=>e.preventDefault(),{passive:false});
+canvas.addEventListener('mousedown',e=>hitLane(e.clientX));
+canvas.addEventListener('mousemove',()=>{});
+canvas.addEventListener('mouseup',()=>{});
+</script>
+</body>
+</html>
