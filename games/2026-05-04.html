@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>도시 블록깨기</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#1a1a2e;font-family:'Arial',sans-serif;overflow:hidden}
+canvas{position:fixed;top:0;left:0;z-index:1;width:100%;height:100%}
+#nick-screen,#over-screen{position:fixed;z-index:10;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(10,10,30,0.95)}
+h1{color:#00d4ff;font-size:2rem;margin-bottom:8px;text-shadow:0 0 20px #00d4ff}
+.sub{color:#aaa;font-size:0.9rem;margin-bottom:30px}
+.nick-btns{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-bottom:24px}
+.nick-btn{padding:12px 22px;border:2px solid #444;background:#16213e;color:#ccc;border-radius:10px;font-size:1rem;cursor:pointer;transition:all 0.2s}
+.nick-btn.selected{border-color:#00d4ff;background:#0f3460;color:#00d4ff;box-shadow:0 0 12px #00d4ff55}
+#start-btn,#retry-btn{padding:14px 40px;background:linear-gradient(135deg,#00d4ff,#0088cc);color:#fff;border:none;border-radius:12px;font-size:1.1rem;cursor:pointer;font-weight:bold;box-shadow:0 4px 20px #00d4ff44}
+#final-score{color:#fff;font-size:1.4rem;margin:16px 0 8px}
+#leaderboard{background:#16213e;border-radius:12px;padding:16px 24px;min-width:240px;margin-bottom:24px}
+#leaderboard h3{color:#00d4ff;margin-bottom:10px;text-align:center}
+.lb-row{display:flex;justify-content:space-between;color:#ddd;padding:4px 0;border-bottom:1px solid #ffffff11;font-size:0.95rem}
+.lb-row:last-child{border-bottom:none}
+.lb-rank{color:#888;width:24px}
+.me{color:#00d4ff;font-weight:bold}
+#hud{position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:5;color:#fff;font-size:1rem;background:rgba(0,0,0,0.5);padding:6px 18px;border-radius:20px;pointer-events:none}
+</style>
+</head>
+<body>
+<div id="nick-screen">
+  <h1>🏙️ 도시 블록깨기</h1>
+  <p class="sub">2026-05-04</p>
+  <div class="nick-btns">
+    <button class="nick-btn" onclick="selectNick(this,'태형')">태형</button>
+    <button class="nick-btn" onclick="selectNick(this,'상이')">상이</button>
+    <button class="nick-btn" onclick="selectNick(this,'세준')">세준</button>
+    <button class="nick-btn" onclick="selectNick(this,'영근')">영근</button>
+  </div>
+  <button id="start-btn" onclick="startGame()">START</button>
+</div>
+<div id="hud" style="display:none">점수: <span id="score-val">0</span> &nbsp;|&nbsp; ❤️ <span id="life-val">3</span></div>
+<canvas id="c"></canvas>
+<div id="over-screen" style="display:none">
+  <h1>GAME OVER</h1>
+  <div id="final-score"></div>
+  <div id="leaderboard"><h3>🏆 리더보드</h3><div id="lb-list"></div></div>
+  <button id="retry-btn" onclick="location.reload()">다시하기</button>
+</div>
+<script>
+const SB=window.supabase.createClient('https://zypthfexxjcsguycjggr.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5cHRoZmV4eGpjc2d1eWNqZ2dyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3Njc2NzksImV4cCI6MjA5MjM0MzY3OX0.HaC4ltXQrO7_BQCeLqBVtvCBs4wL3Hzy6Ow_mO24vs0');
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+let nickname='',score=0,lives=3,running=false,animId;
+let W,H,paddle,ball,blocks=[],particles=[];
+const COLS=7,ROWS=6,BPAD=6,BTOP=80;
+
+function selectNick(el,n){document.querySelectorAll('.nick-btn').forEach(b=>b.classList.remove('selected'));el.classList.add('selected');nickname=n}
+
+function resize(){W=canvas.width=window.innerWidth;H=canvas.height=window.innerHeight;if(running)initLayout()}
+window.addEventListener('resize',resize);
+
+function initLayout(){
+  paddle={x:W/2-50,y:H-60,w:100,h:14,speed:0};
+  if(!ball||!running)ball={x:W/2,y:H-80,dx:3,dy:-4,r:8,launched:false};
+  blocks=[];
+  const bw=Math.floor((W-40-(COLS-1)*BPAD)/COLS);
+  const bh=28;
+  const colors=['#e74c3c','#e67e22','#f1c40f','#2ecc71','#3498db','#9b59b6'];
+  for(let r=0;r<ROWS;r++){for(let c=0;c<COLS;c++){
+    blocks.push({x:20+c*(bw+BPAD),y:BTOP+r*(bh+BPAD),w:bw,h:bh,hp:ROWS-r,color:colors[r],alive:true});
+  }}
+}
+
+function startGame(){
+  if(!nickname)return alert('닉네임을 선택해주세요!');
+  document.getElementById('nick-screen').style.display='none';
+  document.getElementById('hud').style.display='block';
+  resize();running=true;
+  initLayout();
+  ball={x:W/2,y:H-80,dx:3,dy:-4.5,r:8,launched:false};
+  loop();
+}
+
+function updateHUD(){document.getElementById('score-val').textContent=score;document.getElementById('life-val').textContent=lives}
+
+const buildings=[{x:0,w:60,h:120},{x:70,w:45,h:160},{x:125,w:80,h:100},{x:215,w:50,h:140},{x:275,w:70,h:90},{x:355,w:55,h:130}];
+function drawBG(){
+  ctx.fillStyle='#0d0d1a';ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#16213e';
+  const scale=W/420;
+  buildings.forEach(b=>{ctx.fillRect(b.x*scale,H-b.h*0.6,b.w*scale,b.h*0.6)});
+  ctx.fillStyle='rgba(255,220,100,0.6)';
+  buildings.forEach(b=>{
+    for(let i=0;i<3;i++)for(let j=0;j<4;j++){
+      if(Math.random()>0.4)ctx.fillRect(b.x*scale+6+i*14*scale,H-b.h*0.6+8+j*16,8*scale,10);
+    }
+  });
+}
+
+function drawBlock(b){
+  ctx.fillStyle=b.color;ctx.beginPath();ctx.roundRect(b.x,b.y,b.w,b.h,4);ctx.fill();
+  ctx.fillStyle='rgba(255,255,255,0.2)';ctx.fillRect(b.x+2,b.y+2,b.w-4,6);
+  if(b.hp>1){ctx.fillStyle='#fff';ctx.font='bold 11px Arial';ctx.textAlign='center';ctx.fillText(b.hp,b.x+b.w/2,b.y+b.h/2+4);}
+}
+
+function drawPaddle(){
+  const g=ctx.createLinearGradient(paddle.x,paddle.y,paddle.x,paddle.y+paddle.h);
+  g.addColorStop(0,'#00d4ff');g.addColorStop(1,'#0055aa');
+  ctx.fillStyle=g;ctx.beginPath();ctx.roundRect(paddle.x,paddle.y,paddle.w,paddle.h,7);ctx.fill();
+}
+
+function drawBall(){
+  ctx.beginPath();ctx.arc(ball.x,ball.y,ball.r,0,Math.PI*2);
+  const g=ctx.createRadialGradient(ball.x-2,ball.y-2,1,ball.x,ball.y,ball.r);
+  g.addColorStop(0,'#fff');g.addColorStop(1,'#00d4ff');
+  ctx.fillStyle=g;ctx.fill();
+}
+
+function spawnParticles(x,y,color){for(let i=0;i<10;i++)particles.push({x,y,dx:(Math.random()-0.5)*5,dy:(Math.random()-0.5)*5,life:1,color});}
+function updateParticles(){particles=particles.filter(p=>{p.x+=p.dx;p.y+=p.dy;p.life-=0.04;ctx.globalAlpha=p.life;ctx.fillStyle=p.color;ctx.fillRect(p.x,p.y,4,4);return p.life>0});ctx.globalAlpha=1;}
+
+function loop(){
+  if(!running)return;
+  ctx.clearRect(0,0,W,H);
+  drawBG();
+  if(!ball.launched){ball.x=paddle.x+paddle.w/2;ball.y=paddle.y-ball.r-2;}
+  else{
+    ball.x+=ball.dx;ball.y+=ball.dy;
+    if(ball.x-ball.r<0){ball.x=ball.r;ball.dx=Math.abs(ball.dx);}
+    if(ball.x+ball.r>W){ball.x=W-ball.r;ball.dx=-Math.abs(ball.dx);}
+    if(ball.y-ball.r<0){ball.y=ball.r;ball.dy=Math.abs(ball.dy);}
+    if(ball.y+ball.r>ball.y-ball.r&&ball.x>paddle.x&&ball.x<paddle.x+paddle.w&&ball.y+ball.r>paddle.y&&ball.y<paddle.y+paddle.h){
+      ball.dy=-Math.abs(ball.dy);const hit=(ball.x-(paddle.x+paddle.w/2))/(paddle.w/2);ball.dx=hit*5;
+    }
+    if(ball.y-ball.r>H){lives--;updateHUD();ball.launched=false;if(lives<=0){endGame();return;}}
+    blocks.forEach(b=>{
+      if(!b.alive)return;
+      if(ball.x+ball.r>b.x&&ball.x-ball.r<b.x+b.w&&ball.y+ball.r>b.y&&ball.y-ball.r<b.y+b.h){
+        b.hp--;score+=10;updateHUD();
+        const midX=ball.x,midY=ball.y;
+        const overlapL=ball.x+ball.r-b.x,overlapR=b.x+b.w-ball.x+ball.r;
+        const overlapT=ball.y+ball.r-b.y,overlapB=b.y+b.h-(ball.y-ball.r);
+        if(Math.min(overlapL,overlapR)<Math.min(overlapT,overlapB))ball.dx*=-1;else ball.dy*=-1;
+        if(b.hp<=0){b.alive=false;spawnParticles(b.x+b.w/2,b.y+b.h/2,b.color);score+=20;updateHUD();}
+      }
+    });
+    const spd=Math.sqrt(ball.dx*ball.dx+ball.dy*ball.dy);if(spd>8){ball.dx=ball.dx/spd*8;ball.dy=ball.dy/spd*8;}
+  }
+  blocks.forEach(b=>{if(b.alive)drawBlock(b)});
+  updateParticles();
+  drawPaddle();drawBall();
+  if(blocks.every(b=>!b.alive)){score+=200;updateHUD();initLayout();ball={x:W/2,y:H-80,dx:3+(score/500),dy:-4.5-(score/500),r:8,launched:false};}
+  animId=requestAnimationFrame(loop);
+}
+
+function movePaddle(clientX){
+  const rect=canvas.getBoundingClientRect();
+  const x=clientX-rect.left*(W/rect.width)-paddle.w/2;
+  paddle.x=Math.max(0,Math.min(W-paddle.w,x));
+}
+
+canvas.addEventListener('mousemove',e=>{if(running)movePaddle(e.clientX)});
+canvas.addEventListener('mousedown',e=>{if(running&&!ball.launched){ball.launched=true;}});
+canvas.addEventListener('touchmove',e=>{e.preventDefault();if(running)movePaddle(e.touches[0].clientX)},{passive:false});
+canvas.addEventListener('touchstart',e=>{e.preventDefault();if(running){movePaddle(e.touches[0].clientX);if(!ball.launched)ball.launched=true;}},{passive:false});
+canvas.addEventListener('touchend',e=>{e.preventDefault();},{passive:false});
+
+async function endGame(){
+  running=false;cancelAnimationFrame(animId);
+  await SB.from('scores').insert({game_date:'2026-05-04',nickname,score});
+  const {data}=await SB.from('scores').select('nickname,score').eq('game_date','2026-05-04').order('score',{ascending:false}).limit(5);
+  document.getElementById('final-score').textContent=`${nickname}님의 점수: ${score}점`;
+  const lb=document.getElementById('lb-list');lb.innerHTML='';
+  (data||[]).forEach((r,i)=>{
+    const div=document.createElement('div');div.className='lb-row'+(r.nickname===nickname&&r.score===score?' me':'');
+    div.innerHTML=`<span class="lb-rank">${i+1}</span><span>${r.nickname}</span><span>${r.score}점</span>`;
+    lb.appendChild(div);
+  });
+  document.getElementById('hud').style.display='none';
+  document.getElementById('over-screen').style.display='flex';
+}
+</script>
+</body>
+</html>
