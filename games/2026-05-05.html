@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>숲 블록깨기</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#1a3d1a;font-family:'Segoe UI',sans-serif;overflow:hidden}
+canvas{position:fixed;top:0;left:0;z-index:1;width:100%;height:100%}
+.screen{position:fixed;z-index:10;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(15,40,15,0.95)}
+.hidden{display:none!important}
+h1{color:#7fff7f;font-size:2rem;margin-bottom:8px;text-shadow:0 0 12px #3f3}
+.sub{color:#aed69e;font-size:0.9rem;margin-bottom:28px}
+.nick-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:24px}
+.nick-btn{padding:14px 28px;background:#2d6e2d;color:#cfffcf;border:2px solid #4a9e4a;border-radius:12px;font-size:1.1rem;cursor:pointer;transition:all .2s}
+.nick-btn.selected{background:#4caf50;border-color:#7fff7f;color:#fff;box-shadow:0 0 14px #4caf50}
+.start-btn{padding:14px 50px;background:#388e3c;color:#fff;border:none;border-radius:14px;font-size:1.2rem;cursor:pointer;box-shadow:0 4px 16px rgba(0,200,0,0.3);transition:all .2s}
+.start-btn:active{transform:scale(0.96)}
+#hud{position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:5;color:#cfffcf;font-size:1rem;background:rgba(0,60,0,0.6);padding:6px 20px;border-radius:20px;pointer-events:none}
+.result-title{color:#7fff7f;font-size:1.8rem;margin-bottom:6px}
+.score-display{color:#fff;font-size:1.4rem;margin-bottom:20px}
+.board{background:rgba(0,40,0,0.7);border:1px solid #4a9e4a;border-radius:12px;padding:16px 28px;margin-bottom:20px;min-width:220px}
+.board h3{color:#aed69e;margin-bottom:10px;font-size:1rem;text-align:center}
+.board-row{color:#cfffcf;font-size:0.95rem;padding:3px 0;display:flex;justify-content:space-between;gap:24px}
+.board-row.me{color:#7fff7f;font-weight:bold}
+.retry-btn{padding:12px 44px;background:#388e3c;color:#fff;border:none;border-radius:14px;font-size:1.1rem;cursor:pointer}
+</style>
+</head>
+<body>
+<div id="nickScreen" class="screen">
+  <h1>🌲 숲 블록깨기</h1>
+  <p class="sub">2026-05-05</p>
+  <div class="nick-grid">
+    <button class="nick-btn" onclick="selectNick('태형')">태형</button>
+    <button class="nick-btn" onclick="selectNick('상이')">상이</button>
+    <button class="nick-btn" onclick="selectNick('세준')">세준</button>
+    <button class="nick-btn" onclick="selectNick('영근')">영근</button>
+  </div>
+  <button class="start-btn" onclick="startGame()">🌿 START</button>
+</div>
+<canvas id="c"></canvas>
+<div id="hud" class="hidden">점수: <span id="scoreVal">0</span></div>
+<div id="overScreen" class="screen hidden">
+  <p class="result-title">🍃 게임 오버</p>
+  <p class="score-display">점수: <span id="finalScore">0</span></p>
+  <div class="board"><h3>🏆 리더보드</h3><div id="boardList"></div></div>
+  <button class="retry-btn" onclick="location.reload()">🔄 다시하기</button>
+</div>
+<script>
+const SB=window.supabase.createClient('https://zypthfexxjcsguycjggr.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5cHRoZmV4eGpjc2d1eWNqZ2dyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3Njc2NzksImV4cCI6MjA5MjM0MzY3OX0.HaC4ltXQrO7_BQCeLqBVtvCBs4wL3Hzy6Ow_mO24vs0');
+let nickname='',score=0,gameRunning=false;
+function selectNick(n){nickname=n;document.querySelectorAll('.nick-btn').forEach(b=>b.classList.remove('selected'));event.target.classList.add('selected')}
+function startGame(){if(!nickname)return alert('닉네임을 선택하세요!');document.getElementById('nickScreen').classList.add('hidden');document.getElementById('hud').classList.remove('hidden');initGame()}
+const canvas=document.getElementById('c');const ctx=canvas.getContext('2d');
+let W,H,paddle,ball,blocks,lives,paddleTarget;
+const ROWS=5,COLS=7,BPAD=6;
+const COLORS=['#4caf50','#66bb6a','#81c784','#a5d6a7','#388e3c'];
+const EMOJIS=['🌲','🌿','🍃','🌱','🍀'];
+function resize(){W=canvas.width=canvas.offsetWidth;H=canvas.height=canvas.offsetHeight}
+function initGame(){
+  resize();
+  lives=3;score=0;gameRunning=true;
+  const ph=18,pw=Math.min(W*0.22,110);
+  paddle={x:W/2-pw/2,y:H-60,w:pw,h:ph,spd:8};
+  paddleTarget=W/2;
+  const br=22,bw=(W-BPAD*(COLS+1))/COLS;
+  const offY=70;
+  blocks=[];
+  for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++)blocks.push({x:BPAD+c*(bw+BPAD),y:offY+r*(br+BPAD),w:bw,h:br,alive:true,color:COLORS[r%COLORS.length],emoji:EMOJIS[r%EMOJIS.length]});
+  const spd=Math.min(W,H)*0.007;
+  ball={x:W/2,y:H/2,r:10,vx:spd*(Math.random()>0.5?1:-1),vy:-spd};
+  requestAnimationFrame(loop);
+}
+function drawBg(){
+  ctx.fillStyle='#1a3d1a';ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='rgba(40,80,40,0.3)';
+  for(let i=0;i<6;i++){ctx.beginPath();ctx.arc(i*W/5,H,40+i*10,0,Math.PI,true);ctx.fill()}
+}
+function drawPaddle(){
+  ctx.save();ctx.shadowColor='#4caf50';ctx.shadowBlur=14;
+  const g=ctx.createLinearGradient(paddle.x,paddle.y,paddle.x,paddle.y+paddle.h);
+  g.addColorStop(0,'#66bb6a');g.addColorStop(1,'#2e7d32');
+  ctx.fillStyle=g;ctx.beginPath();ctx.roundRect(paddle.x,paddle.y,paddle.w,paddle.h,9);ctx.fill();ctx.restore();
+}
+function drawBall(){
+  ctx.save();ctx.shadowColor='#a5d6a7';ctx.shadowBlur=18;
+  ctx.fillStyle='#c8e6c9';ctx.beginPath();ctx.arc(ball.x,ball.y,ball.r,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(ball.x-3,ball.y-3,3,0,Math.PI*2);ctx.fill();ctx.restore();
+}
+function drawBlocks(){
+  blocks.forEach(b=>{if(!b.alive)return;
+    ctx.save();ctx.shadowColor=b.color;ctx.shadowBlur=8;
+    ctx.fillStyle=b.color;ctx.beginPath();ctx.roundRect(b.x,b.y,b.w,b.h,6);ctx.fill();ctx.restore();
+    ctx.font=`${b.h*0.75}px serif`;ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(b.emoji,b.x+b.w/2,b.y+b.h/2);
+  });
+}
+function drawLives(){
+  ctx.font='18px serif';ctx.textAlign='left';ctx.fillStyle='#a5d6a7';
+  let s='';for(let i=0;i<lives;i++)s+='🌿';
+  ctx.fillText(s,10,H-15);
+}
+function update(){
+  paddle.x+=(paddleTarget-paddle.w/2-paddle.x)*0.18;
+  paddle.x=Math.max(0,Math.min(W-paddle.w,paddle.x));
+  ball.x+=ball.vx;ball.y+=ball.vy;
+  if(ball.x-ball.r<0){ball.x=ball.r;ball.vx=Math.abs(ball.vx)}
+  if(ball.x+ball.r>W){ball.x=W-ball.r;ball.vx=-Math.abs(ball.vx)}
+  if(ball.y-ball.r<0){ball.y=ball.r;ball.vy=Math.abs(ball.vy)}
+  if(ball.y+ball.r>paddle.y&&ball.y-ball.r<paddle.y+paddle.h&&ball.x>paddle.x&&ball.x<paddle.x+paddle.w){
+    ball.vy=-Math.abs(ball.vy);
+    ball.vx+=((ball.x-(paddle.x+paddle.w/2))/paddle.w)*4;
+  }
+  if(ball.y-ball.r>H){lives--;if(lives<=0){endGame();return;}ball.x=W/2;ball.y=H/2;ball.vy=-Math.abs(ball.vy)}
+  blocks.forEach(b=>{if(!b.alive)return;
+    if(ball.x+ball.r>b.x&&ball.x-ball.r<b.x+b.w&&ball.y+ball.r>b.y&&ball.y-ball.r<b.y+b.h){
+      b.alive=false;score+=10;document.getElementById('scoreVal').textContent=score;
+      const cx=b.x+b.w/2,cy=b.y+b.h/2;
+      const fromL=Math.abs(ball.x-(b.x)),fromR=Math.abs(ball.x-(b.x+b.w));
+      const fromT=Math.abs(ball.y-(b.y)),fromB=Math.abs(ball.y-(b.y+b.h));
+      const mn=Math.min(fromL,fromR,fromT,fromB);
+      if(mn===fromT||mn===fromB)ball.vy*=-1;else ball.vx*=-1;
+    }
+  });
+  if(blocks.every(b=>!b.alive)){score+=100;endGame()}
+}
+function loop(){if(!gameRunning)return;drawBg();drawBlocks();drawPaddle();drawBall();drawLives();update();requestAnimationFrame(loop)}
+async function endGame(){
+  gameRunning=false;
+  document.getElementById('hud').classList.add('hidden');
+  document.getElementById('finalScore').textContent=score;
+  document.getElementById('overScreen').classList.remove('hidden');
+  await SB.from('scores').insert({game_date:'2026-05-05',nickname,score});
+  const {data}=await SB.from('scores').select('nickname,score').eq('game_date','2026-05-05').order('score',{ascending:false}).limit(5);
+  const bl=document.getElementById('boardList');bl.innerHTML='';
+  if(data)data.forEach((r,i)=>{const d=document.createElement('div');d.className='board-row'+(r.nickname===nickname&&r.score===score?' me':'');d.innerHTML=`<span>${i+1}. ${r.nickname}</span><span>${r.score}</span>`;bl.appendChild(d)});
+}
+function getX(e){return(e.touches?e.touches[0].clientX:e.clientX)}
+canvas.addEventListener('touchstart',e=>{e.preventDefault();paddleTarget=getX(e)},{passive:false});
+canvas.addEventListener('touchmove',e=>{e.preventDefault();paddleTarget=getX(e)},{passive:false});
+canvas.addEventListener('touchend',e=>{e.preventDefault()},{passive:false});
+canvas.addEventListener('mousedown',e=>{paddleTarget=getX(e)});
+canvas.addEventListener('mousemove',e=>{if(e.buttons)paddleTarget=getX(e)});
+canvas.addEventListener('mouseup',e=>{});
+window.addEventListener('resize',()=>{if(gameRunning){resize()}});
+</script>
+</body>
+</html>
