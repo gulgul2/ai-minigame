@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>복고 퀴즈</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#1a0a2e;font-family:'Courier New',monospace;overflow:hidden;}
+canvas{position:fixed;top:0;left:0;z-index:1;width:100%;height:100%;}
+.screen{position:fixed;z-index:10;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;}
+.hidden{display:none!important;}
+h1{color:#ff6ec7;font-size:2em;text-shadow:0 0 20px #ff6ec7;margin-bottom:10px;letter-spacing:4px;}
+h2{color:#ffe600;font-size:1.4em;text-shadow:0 0 10px #ffe600;margin-bottom:20px;}
+.nick-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:20px 0;}
+.btn{padding:14px 28px;border:3px solid #ff6ec7;background:transparent;color:#ff6ec7;font-size:1.1em;font-family:'Courier New',monospace;cursor:pointer;border-radius:4px;transition:all .2s;text-transform:uppercase;letter-spacing:2px;}
+.btn:hover,.btn.active{background:#ff6ec7;color:#1a0a2e;}
+.btn-start{border-color:#ffe600;color:#ffe600;font-size:1.3em;margin-top:10px;padding:16px 50px;}
+.btn-start:hover{background:#ffe600;color:#1a0a2e;}
+.subtitle{color:#7efff5;font-size:.9em;letter-spacing:3px;margin-bottom:30px;}
+#scoreBoard{background:rgba(0,0,0,.7);border:2px solid #ff6ec7;padding:20px;border-radius:8px;min-width:280px;text-align:center;}
+#scoreBoard h3{color:#ffe600;margin-bottom:12px;font-size:1.2em;}
+#scoreBoard p{color:#7efff5;margin:4px 0;font-size:1em;}
+.lb-entry{display:flex;justify-content:space-between;color:#fff;margin:6px 0;font-size:.95em;border-bottom:1px solid #333;padding-bottom:4px;}
+.lb-entry .rank{color:#ff6ec7;width:30px;}
+.lb-entry .name{flex:1;text-align:left;}
+.lb-entry .sc{color:#ffe600;}
+#finalScore{font-size:2em;color:#ff6ec7;text-shadow:0 0 20px #ff6ec7;margin:10px 0;}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="nickScreen" class="screen">
+  <h1>★ RETRO QUIZ ★</h1>
+  <div class="subtitle">2026 복고 퀴즈 챌린지</div>
+  <h2>닉네임을 선택하세요</h2>
+  <div class="nick-grid">
+    <button class="btn" onclick="selectNick('태형')">태형</button>
+    <button class="btn" onclick="selectNick('상이')">상이</button>
+    <button class="btn" onclick="selectNick('세준')">세준</button>
+    <button class="btn" onclick="selectNick('영근')">영근</button>
+  </div>
+  <button class="btn btn-start" onclick="startGame()">▶ START</button>
+</div>
+<div id="gameOverScreen" class="screen hidden">
+  <div id="scoreBoard">
+    <h3>🎮 GAME OVER 🎮</h3>
+    <p>닉네임: <span id="goNick" style="color:#ff6ec7"></span></p>
+    <div id="finalScore">0점</div>
+    <div id="leaderboard"></div>
+    <button class="btn btn-start" onclick="resetGame()" style="margin-top:16px;font-size:1em;padding:12px 30px;">▶ 다시하기</button>
+  </div>
+</div>
+<script>
+const SB=window.supabase.createClient('https://zypthfexxjcsguycjggr.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5cHRoZmV4eGpjc2d1eWNqZ2dyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3Njc2NzksImV4cCI6MjA5MjM0MzY3OX0.HaC4ltXQrO7_BQCeLqBVtvCBs4wL3Hzy6Ow_mO24vs0');
+const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+let W,H,nickname='',score=0,lives=3,qIdx=0,gameActive=false,answered=false,timer=0,timerMax=15,particles=[];
+const QUESTIONS=[
+  {q:"1980년대 최고 인기 오락실 게임은?",a:["갤라가","테트리스","팩맨","동키콩"],c:0},
+  {q:"'오빠가 미안해' 히트 가수는?",a:["나훈아","남진","조용필","이미자"],c:2},
+  {q:"1990년대 삐삐의 다른 이름은?",a:["무선호출기","핸드폰","PDA","워키토키"],c:0},
+  {q:"복고 드라마 '응답하라' 시리즈 최초 배경 연도는?",a:["1988","1994","1997","1990"],c:0},
+  {q:"옛날 교복 색상으로 가장 흔한 것은?",a:["검정","흰색","파랑","회색"],c:0},
+  {q:"1990년대 최고 인기 음료 '맥콜'의 주 원료는?",a:["보리","사과","포도","오렌지"],c:0},
+  {q:"카세트테이프를 되감을 때 사용한 도구는?",a:["연필","자","가위","핀"],c:0},
+  {q:"'서울의 달' 히트곡 가수는?",a:["김광석","이문세","신승훈","변진섭"],c:1},
+  {q:"추억의 불량식품 '쫀드기'의 주 재료는?",a:["밀가루","쌀","콩","감자"],c:0},
+  {q:"1980년대 인기 만화 '달려라 하니'의 주인공 직업은?",a:["육상선수","수영선수","체조선수","배구선수"],c:0},
+];
+function resize(){W=cv.width=window.innerWidth;H=cv.height=window.innerHeight;}
+window.addEventListener('resize',resize);resize();
+function selectNick(n){nickname=n;document.querySelectorAll('.nick-grid .btn').forEach(b=>{b.classList.toggle('active',b.textContent===n);});}
+function startGame(){
+  if(!nickname)return;
+  document.getElementById('nickScreen').classList.add('hidden');
+  score=0;lives=3;qIdx=0;gameActive=true;answered=false;timer=timerMax;particles=[];
+  shuffle(QUESTIONS);requestAnimationFrame(loop);
+}
+function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}}
+function spawnParticles(x,y,col){for(let i=0;i<18;i++)particles.push({x,y,vx:(Math.random()-0.5)*6,vy:(Math.random()-2)*5,life:1,col});}
+let touchX=0,touchY=0,clicked=false,clickX=0,clickY=0;
+cv.addEventListener('touchstart',e=>{e.preventDefault();const t=e.touches[0];touchX=t.clientX*(W/window.innerWidth);touchY=t.clientY*(H/window.innerHeight);clickX=touchX;clickY=touchY;clicked=true;},{passive:false});
+cv.addEventListener('touchmove',e=>{e.preventDefault();},{passive:false});
+cv.addEventListener('touchend',e=>{e.preventDefault();},{passive:false});
+cv.addEventListener('mousedown',e=>{clickX=e.clientX*(W/window.innerWidth);clickY=e.clientY*(H/window.innerHeight);clicked=true;});
+cv.addEventListener('mousemove',e=>{});
+cv.addEventListener('mouseup',e=>{});
+function getAnswerRects(){
+  const q=QUESTIONS[qIdx],bw=Math.min(W*0.42,180),bh=54,gap=14,startY=H*0.58;
+  return q.a.map((a,i)=>({x:W/2+(i%2===0?-bw-gap/2:gap/2),y:startY+Math.floor(i/2)*(bh+gap),w:bw,h:bh,idx:i,text:a}));
+}
+let lastTime=0,dt=0;
+function loop(ts){
+  if(!gameActive)return;
+  dt=(ts-lastTime)/1000;lastTime=ts;
+  timer-=dt;
+  if(timer<=0&&!answered){handleAnswer(-1);}
+  if(clicked){handleClick(clickX,clickY);clicked=false;}
+  draw();requestAnimationFrame(loop);
+}
+function handleClick(x,y){
+  if(!gameActive||answered)return;
+  const rects=getAnswerRects();
+  for(const r of rects){if(x>=r.x&&x<=r.x+r.w&&y>=r.y&&y<=r.y+r.h){handleAnswer(r.idx);return;}}
+}
+function handleAnswer(idx){
+  if(answered)return;answered=true;
+  const correct=QUESTIONS[qIdx].c;
+  if(idx===correct){score+=Math.ceil(timer/timerMax*100);spawnParticles(W/2,H/2,'#ffe600');}
+  else{lives--;spawnParticles(W/2,H/2,'#ff4444');}
+  setTimeout(()=>{
+    if(lives<=0||qIdx>=QUESTIONS.length-1){endGame();return;}
+    qIdx++;answered=false;timer=timerMax;
+  },900);
+}
+function draw(){
+  ctx.fillStyle='#1a0a2e';ctx.fillRect(0,0,W,H);
+  drawGrid();drawHUD();drawQuestion();drawAnswers();drawParticles();
+}
+function drawGrid(){
+  ctx.strokeStyle='rgba(126,255,245,0.07)';ctx.lineWidth=1;
+  for(let x=0;x<W;x+=40){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+  for(let y=0;y<H;y+=40){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+}
+function drawHUD(){
+  ctx.fillStyle='rgba(0,0,0,0.5)';ctx.fillRect(0,0,W,56);
+  ctx.fillStyle='#ffe600';ctx.font='bold 18px Courier New';ctx.textAlign='left';ctx.fillText('★ '+nickname,12,34);
+  ctx.fillStyle='#7efff5';ctx.textAlign='center';ctx.fillText('SCORE: '+score,W/2,34);
+  ctx.textAlign='right';ctx.fillStyle='#ff6ec7';
+  let hearts='';for(let i=0;i<lives;i++)hearts+='♥ ';ctx.fillText(hearts,W-12,34);
+  const tw=W*0.7,tx=W/2-tw/2,ty=50,pct=Math.max(0,timer/timerMax);
+  ctx.fillStyle='#333';ctx.fillRect(tx,ty,tw,8);
+  ctx.fillStyle=pct>0.5?'#7efff5':pct>0.25?'#ffe600':'#ff4444';ctx.fillRect(tx,ty,tw*pct,8);
+}
+function drawQuestion(){
+  const q=QUESTIONS[qIdx];
+  ctx.save();ctx.fillStyle='rgba(255,110,199,0.13)';roundRect(ctx,W*0.05,H*0.1,W*0.9,H*0.35,14);ctx.fill();
+  ctx.strokeStyle='#ff6ec7';ctx.lineWidth=2;roundRect(ctx,W*0.05,H*0.1,W*0.9,H*0.35,14);ctx.stroke();
+  ctx.fillStyle='#ffe600';ctx.font='bold 13px Courier New';ctx.textAlign='center';ctx.fillText(`Q${qIdx+1}/${QUESTIONS.length}`,W/2,H*0.1+24);
+  ctx.fillStyle='#fff';ctx.font='bold '+Math.min(18,W/22)+'px Courier New';
+  wrapText(ctx,q.q,W/2,H*0.1+52,W*0.82,26);ctx.restore();
+}
+function drawAnswers(){
+  const rects=getAnswerRects(),correct=QUESTIONS[qIdx].c;
+  for(const r of rects){
+    let bg='rgba(30,10,60,0.85)',border='#7efff5',tc='#fff';
+    if(answered){if(r.idx===correct){bg='rgba(50,200,80,0.35)';border='#50c850';tc='#ffe600';}else{bg='rgba(200,40,40,0.25)';border='#ff4444';tc='#ff8888';}}
+    ctx.save();ctx.fillStyle=bg;roundRect(ctx,r.x,r.y,r.w,r.h,10);ctx.fill();
+    ctx.strokeStyle=border;ctx.lineWidth=2;roundRect(ctx,r.x,r.y,r.w,r.h,10);ctx.stroke();
+    ctx.fillStyle=tc;ctx.font='bold '+Math.min(15,W/28)+'px Courier New';ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(r.text,r.x+r.w/2,r.y+r.h/2);ctx.restore();
+  }
+}
+function drawParticles(){
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];p.x+=p.vx;p.y+=p.vy;p.vy+=0.2;p.life-=0.03;
+    if(p.life<=0){particles.splice(i,1);continue;}
+    ctx.save();ctx.globalAlpha=p.life;ctx.fillStyle=p.col;ctx.beginPath();ctx.arc(p.x,p.y,5*p.life,0,Math.PI*2);ctx.fill();ctx.restore();
+  }
+}
+function wrapText(ctx,text,x,y,maxW,lh){
+  const words=text.split(' '),lines=[];let line='';
+  for(const w of words){const test=line+w+' ';if(ctx.measureText(test).width>maxW&&line){lines.push(line.trim());line=w+' ';}else line=test;}
+  lines.push(line.trim());
+  const startY=y-(lines.length-1)*lh/2;
+  lines.forEach((l,i)=>ctx.fillText(l,x,startY+i*lh));
+}
+function roundRect(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);ctx.arcTo(x+w,y,x+w,y+r,r);ctx.lineTo(x+w,y+h-r);ctx.arcTo(x+w,y+h,x+w-r,y+h,r);ctx.lineTo(x+r,y+h);ctx.arcTo(x,y+h,x,y+h-r,r);ctx.lineTo(x,y+r);ctx.arcTo(x,y,x+r,y,r);ctx.closePath();}
+async function endGame(){
+  gameActive=false;
+  await SB.from('scores').insert({game_date:'2026-05-06',nickname,score});
+  const {data}=await SB.from('scores').select('nickname,score').eq('game_date','2026-05-06').order('score',{ascending:false}).limit(5);
+  document.getElementById('goNick').textContent=nickname;
+  document.getElementById('finalScore').textContent=score+'점';
+  const lb=document.getElementById('leaderboard');
+  lb.innerHTML='<div style="color:#ff6ec7;margin-bottom:8px;font-size:.9em;">🏆 TOP 5 리더보드</div>';
+  if(data)data.forEach((r,i)=>{lb.innerHTML+=`<div class="lb-entry"><span class="rank">${i+1}.</span><span class="name">${r.nickname}</span><span class="sc">${r.score}</span></div>`;});
+  document.getElementById('gameOverScreen').classList.remove('hidden');
+}
+function resetGame(){
+  document.getElementById('gameOverScreen').classList.add('hidden');
+  document.getElementById('nickScreen').classList.remove('hidden');
+  document.querySelectorAll('.nick-grid .btn').forEach(b=>b.classList.remove('active'));
+  nickname='';
+}
+</script>
+</body>
+</html>
