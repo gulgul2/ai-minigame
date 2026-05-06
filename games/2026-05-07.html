@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Animal Rhythm</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#1a1a2e;font-family:'Arial',sans-serif;overflow:hidden;}
+canvas{position:fixed;top:0;left:0;z-index:1;width:100%;height:100%;}
+#nickScreen,#overScreen{position:fixed;z-index:10;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#1a1a2e,#16213e,#0f3460);}
+h1{color:#e94560;font-size:2.2em;margin-bottom:10px;text-shadow:0 0 20px #e94560;}
+.sub{color:#a8dadc;font-size:1em;margin-bottom:30px;}
+.nick-btns{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;margin-bottom:20px;}
+.nick-btn{padding:12px 24px;border:2px solid #457b9d;background:transparent;color:#a8dadc;border-radius:30px;font-size:1.1em;cursor:pointer;transition:all .2s;}
+.nick-btn.active,.nick-btn:hover{background:#e94560;border-color:#e94560;color:#fff;}
+#startBtn{padding:14px 40px;background:#e94560;color:#fff;border:none;border-radius:30px;font-size:1.2em;cursor:pointer;margin-top:10px;}
+#scoreDisp{color:#ffd700;font-size:2.5em;margin:10px 0;}
+#finalMsg{color:#a8dadc;font-size:1em;margin-bottom:20px;}
+#board{background:rgba(255,255,255,.08);border-radius:12px;padding:16px;min-width:260px;margin-bottom:20px;}
+#board h3{color:#e94560;margin-bottom:10px;text-align:center;}
+.lb-row{color:#a8dadc;font-size:.95em;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.1);}
+.lb-row:last-child{border:none;}
+#retryBtn{padding:12px 36px;background:#e94560;color:#fff;border:none;border-radius:30px;font-size:1.1em;cursor:pointer;}
+#hud{position:fixed;top:10px;left:0;width:100%;z-index:5;display:none;justify-content:space-between;padding:0 20px;pointer-events:none;}
+#hudScore{color:#ffd700;font-size:1.3em;}#hudLife{color:#e94560;font-size:1.3em;}
+</style>
+</head>
+<body>
+<div id="nickScreen">
+  <h1>🐾 Animal Rhythm</h1>
+  <p class="sub">닉네임을 선택하세요</p>
+  <div class="nick-btns">
+    <button class="nick-btn" onclick="selNick(this,'태형')">태형</button>
+    <button class="nick-btn" onclick="selNick(this,'상이')">상이</button>
+    <button class="nick-btn" onclick="selNick(this,'세준')">세준</button>
+    <button class="nick-btn" onclick="selNick(this,'영근')">영근</button>
+  </div>
+  <button id="startBtn" onclick="startGame()">START</button>
+</div>
+<div id="hud"><span id="hudScore">SCORE: 0</span><span id="hudLife">❤❤❤</span></div>
+<canvas id="c"></canvas>
+<div id="overScreen" style="display:none;">
+  <h1>GAME OVER</h1>
+  <div id="scoreDisp">0</div>
+  <div id="finalMsg"></div>
+  <div id="board"><h3>🏆 TOP 5</h3><div id="lbList">불러오는 중...</div></div>
+  <button id="retryBtn" onclick="location.reload()">다시하기</button>
+</div>
+<script>
+const SB=window.supabase.createClient('https://zypthfexxjcsguycjggr.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5cHRoZmV4eGpjc2d1eWNqZ2dyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3Njc2NzksImV4cCI6MjA5MjM0MzY3OX0.HaC4ltXQrO7_BQCeLqBVtvCBs4wL3Hzy6Ow_mO24vs0');
+const canvas=document.getElementById('c'),ctx=canvas.getContext('2d');
+const ANIMALS=['🐶','🐱','🐸','🐰','🦊','🐼','🐨','🐯'];
+const LANES=4;let W,H,nickname='',running=false,score=0,life=3,frame=0,speed=4,notes=[],particles=[];
+const laneColors=['#e94560','#f4a261','#2a9d8f','#457b9d'];
+function resize(){W=canvas.width=window.innerWidth;H=canvas.height=window.innerHeight;}
+window.addEventListener('resize',resize);resize();
+function selNick(el,n){document.querySelectorAll('.nick-btn').forEach(b=>b.classList.remove('active'));el.classList.add('active');nickname=n;}
+function laneX(i){return(W/LANES)*i+W/(LANES*2);}
+function laneW(){return W/LANES-10;}
+const HIT_Y=()=>H*0.82;
+const HIT_H=18;
+function spawnNote(){
+  const lane=Math.floor(Math.random()*LANES);
+  notes.push({lane,y:-40,animal:ANIMALS[Math.floor(Math.random()*ANIMALS.length)],hit:false,miss:false});
+}
+function addParticle(x,y,col){
+  for(let i=0;i<8;i++)particles.push({x,y,vx:(Math.random()-0.5)*5,vy:(Math.random()-3)*4,life:1,col});
+}
+function drawLanes(){
+  for(let i=0;i<LANES;i++){
+    ctx.fillStyle=`rgba(255,255,255,0.04)`;
+    ctx.fillRect((W/LANES)*i+5,0,W/LANES-10,H);
+    ctx.strokeStyle=laneColors[i]+'88';ctx.lineWidth=1;
+    ctx.strokeRect((W/LANES)*i+5,0,W/LANES-10,H);
+  }
+}
+function drawHitZone(){
+  for(let i=0;i<LANES;i++){
+    ctx.fillStyle=laneColors[i]+'55';
+    ctx.beginPath();ctx.roundRect(laneX(i)-laneW()/2,HIT_Y()-HIT_H/2,laneW(),HIT_H,8);ctx.fill();
+    ctx.strokeStyle=laneColors[i];ctx.lineWidth=2;ctx.stroke();
+  }
+}
+function drawNotes(){
+  notes.forEach(n=>{
+    if(n.hit||n.miss)return;
+    const x=laneX(n.lane),y=n.y,r=26;
+    ctx.fillStyle=laneColors[n.lane]+'cc';
+    ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.stroke();
+    ctx.font=`${r*1.2}px serif`;ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(n.animal,x,y);
+  });
+}
+function drawParticles(){
+  particles.forEach(p=>{
+    ctx.globalAlpha=p.life;ctx.fillStyle=p.col;
+    ctx.beginPath();ctx.arc(p.x,p.y,4,0,Math.PI*2);ctx.fill();
+  });ctx.globalAlpha=1;
+}
+function drawBG(){
+  ctx.fillStyle='#1a1a2e';ctx.fillRect(0,0,W,H);
+  const grad=ctx.createLinearGradient(0,H*0.7,0,H);
+  grad.addColorStop(0,'#0f3460');grad.addColorStop(1,'#16213e');
+  ctx.fillStyle=grad;ctx.fillRect(0,H*0.7,W,H*0.3);
+}
+function updateHUD(){
+  document.getElementById('hudScore').textContent='SCORE: '+score;
+  document.getElementById('hudLife').textContent='❤'.repeat(Math.max(0,life));
+}
+function hitLane(lx){
+  const lane=Math.floor(lx/W*LANES);
+  let best=null,bestDist=9999;
+  notes.forEach(n=>{if(!n.hit&&!n.miss&&n.lane===lane){const d=Math.abs(n.y-HIT_Y());if(d<bestDist){bestDist=d;best=n;}}});
+  if(best&&bestDist<60){
+    best.hit=true;score+=bestDist<25?100:50;
+    addParticle(laneX(lane),HIT_Y(),laneColors[lane]);
+  }else{score=Math.max(0,score-10);}
+  updateHUD();
+}
+function loop(){
+  if(!running)return;
+  frame++;
+  if(frame%(Math.max(20,60-Math.floor(score/300)))===0)spawnNote();
+  speed=4+Math.floor(score/500)*0.5;
+  drawBG();drawLanes();drawHitZone();
+  notes.forEach(n=>{if(!n.hit&&!n.miss){n.y+=speed;if(n.y>HIT_Y()+80&&!n.hit){n.miss=true;life--;updateHUD();if(life<=0){endGame();return;}}}});
+  notes=notes.filter(n=>n.y<H+60&&!(n.hit||n.miss));
+  particles.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=0.2;p.life-=0.05;});
+  particles=particles.filter(p=>p.life>0);
+  drawNotes();drawParticles();
+  const combo=score>0?'':'' ;
+  ctx.fillStyle='#ffd700';ctx.font='bold 1.2em Arial';ctx.textAlign='left';
+  requestAnimationFrame(loop);
+}
+async function endGame(){
+  running=false;
+  document.getElementById('hud').style.display='none';
+  document.getElementById('overScreen').style.display='flex';
+  document.getElementById('scoreDisp').textContent=score;
+  document.getElementById('finalMsg').textContent=nickname+'님의 점수: '+score;
+  await SB.from('scores').insert({game_date:'2026-05-07',nickname,score});
+  const{data}=await SB.from('scores').select('nickname,score').eq('game_date','2026-05-07').order('score',{ascending:false}).limit(5);
+  const lb=document.getElementById('lbList');
+  if(data&&data.length){lb.innerHTML=data.map((r,i)=>`<div class="lb-row">${['🥇','🥈','🥉','4️⃣','5️⃣'][i]} ${r.nickname} — ${r.score}</div>`).join('');}
+  else{lb.innerHTML='<div class="lb-row">기록 없음</div>';}
+}
+function startGame(){
+  if(!nickname){alert('닉네임을 선택해주세요!');return;}
+  document.getElementById('nickScreen').style.display='none';
+  document.getElementById('hud').style.display='flex';
+  running=true;score=0;life=3;frame=0;notes=[];particles=[];
+  updateHUD();loop();
+}
+function getPos(e){
+  if(e.touches)return{x:e.touches[0].clientX,y:e.touches[0].clientY};
+  return{x:e.clientX,y:e.clientY};
+}
+canvas.addEventListener('touchstart',e=>{e.preventDefault();if(running)hitLane(getPos(e).x);},{passive:false});
+canvas.addEventListener('mousedown',e=>{if(running)hitLane(getPos(e).x);});
+canvas.addEventListener('touchmove',e=>{e.preventDefault();},{passive:false});
+canvas.addEventListener('touchend',e=>{e.preventDefault();},{passive:false});
+canvas.addEventListener('mousemove',e=>{});
+canvas.addEventListener('mouseup',e=>{});
+</script>
+</body>
+</html>
