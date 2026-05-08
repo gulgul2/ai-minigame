@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>판타지 아케이드</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0015;font-family:'Arial',sans-serif;overflow:hidden}
+canvas{position:fixed;top:0;left:0;z-index:1;width:100%;height:100%}
+#nickScreen,#overScreen{position:fixed;z-index:10;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(180deg,#0a0015 0%,#1a0035 100%)}
+h1{color:#ffd700;font-size:2em;text-shadow:0 0 20px #ff00ff;margin-bottom:10px}
+.sub{color:#cc88ff;margin-bottom:30px;font-size:1em}
+.nick-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:24px}
+.nick-btn{padding:14px 28px;border:2px solid #6600cc;background:#1a0035;color:#fff;border-radius:12px;font-size:1.1em;cursor:pointer;transition:all .2s}
+.nick-btn.sel{background:#6600cc;border-color:#ffd700;color:#ffd700;box-shadow:0 0 16px #ffd700}
+#startBtn{padding:14px 48px;background:linear-gradient(90deg,#6600cc,#cc00ff);color:#ffd700;border:none;border-radius:16px;font-size:1.2em;cursor:pointer;box-shadow:0 0 20px #cc00ff}
+#hud{position:fixed;top:10px;left:0;right:0;z-index:5;display:none;justify-content:center;align-items:center;gap:30px;color:#ffd700;font-size:1.1em;text-shadow:0 0 8px #ff00ff}
+#overScreen{display:none}
+.score-big{color:#ffd700;font-size:2.5em;margin:10px 0;text-shadow:0 0 20px #ffd700}
+.lb{width:280px;background:#1a0035;border:1px solid #6600cc;border-radius:12px;padding:14px;margin:16px 0}
+.lb h3{color:#cc88ff;text-align:center;margin-bottom:10px}
+.lb-row{display:flex;justify-content:space-between;color:#fff;padding:4px 0;border-bottom:1px solid #2a0055;font-size:.95em}
+#retryBtn{padding:12px 40px;background:linear-gradient(90deg,#6600cc,#cc00ff);color:#ffd700;border:none;border-radius:14px;font-size:1.1em;cursor:pointer;margin-top:8px}
+</style>
+</head>
+<body>
+<div id="nickScreen">
+  <h1>✨ 마법의 탑 ✨</h1>
+  <div class="sub">닉네임을 선택하세요</div>
+  <div class="nick-grid">
+    <button class="nick-btn" onclick="selNick(this,'태형')">태형</button>
+    <button class="nick-btn" onclick="selNick(this,'상이')">상이</button>
+    <button class="nick-btn" onclick="selNick(this,'세준')">세준</button>
+    <button class="nick-btn" onclick="selNick(this,'영근')">영근</button>
+  </div>
+  <button id="startBtn" onclick="startGame()">START ▶</button>
+</div>
+<div id="hud"><span>❤️ <span id="hpVal">3</span></span><span>⭐ <span id="scoreVal">0</span></span><span>🌊 <span id="waveVal">1</span></span></div>
+<canvas id="c"></canvas>
+<div id="overScreen">
+  <h1>GAME OVER</h1>
+  <div class="sub" id="overNick"></div>
+  <div class="score-big" id="overScore"></div>
+  <div class="lb"><h3>🏆 오늘의 랭킹</h3><div id="lbList"></div></div>
+  <button id="retryBtn" onclick="location.reload()">다시하기</button>
+</div>
+<script>
+const SB=window.supabase.createClient('https://zypthfexxjcsguycjggr.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5cHRoZmV4eGpjc2d1eWNqZ2dyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3Njc2NzksImV4cCI6MjA5MjM0MzY3OX0.HaC4ltXQrO7_BQCeLqBVtvCBs4wL3Hzy6Ow_mO24vs0');
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+let W,H,nickname='',score=0,hp=3,wave=1,running=false,raf;
+let player,bullets=[],enemies=[],particles=[],stars=[];
+let lastEnemy=0,enemyInterval=1200,waveTimer=0;
+function selNick(el,n){document.querySelectorAll('.nick-btn').forEach(b=>b.classList.remove('sel'));el.classList.add('sel');nickname=n;}
+function resize(){W=canvas.width=window.innerWidth;H=canvas.height=window.innerHeight;}
+window.addEventListener('resize',resize);resize();
+function mkStars(){stars=[];for(let i=0;i<80;i++)stars.push({x:Math.random()*W,y:Math.random()*H,r:Math.random()*1.5+.3,s:Math.random()*.5+.2});}
+function startGame(){
+  if(!nickname)return alert('닉네임을 선택해주세요!');
+  document.getElementById('nickScreen').style.display='none';
+  document.getElementById('hud').style.display='flex';
+  mkStars();
+  player={x:W/2,y:H-100,r:18,spd:5,color:'#00ffff',shooting:false};
+  running=true;loop();
+}
+let touchX=null,shooting=false;
+canvas.addEventListener('touchstart',e=>{e.preventDefault();let t=e.touches[0];touchX=t.clientX;shooting=true;},{passive:false});
+canvas.addEventListener('touchmove',e=>{e.preventDefault();let t=e.touches[0];touchX=t.clientX;},{passive:false});
+canvas.addEventListener('touchend',e=>{e.preventDefault();shooting=false;touchX=null;},{passive:false});
+canvas.addEventListener('mousedown',e=>{touchX=e.clientX;shooting=true;});
+canvas.addEventListener('mousemove',e=>{if(shooting)touchX=e.clientX;});
+canvas.addEventListener('mouseup',()=>{shooting=false;touchX=null;});
+let lastShot=0;
+function loop(ts=0){
+  if(!running)return;
+  raf=requestAnimationFrame(loop);
+  ctx.fillStyle='rgba(10,0,21,.85)';ctx.fillRect(0,0,W,H);
+  stars.forEach(s=>{s.y+=s.s;if(s.y>H)s.y=0;ctx.beginPath();ctx.arc(s.x,s.y,s.r,0,Math.PI*2);ctx.fillStyle=`rgba(255,255,255,${.4+Math.sin(ts/300+s.x)*.3})`;ctx.fill();});
+  if(touchX!==null){let dx=touchX-player.x;if(Math.abs(dx)>3)player.x+=Math.sign(dx)*Math.min(player.spd*2,Math.abs(dx));}
+  player.x=Math.max(player.r,Math.min(W-player.r,player.x));
+  if(shooting&&ts-lastShot>200){bullets.push({x:player.x,y:player.y-player.r,vy:-10,r:5,color:'#ffd700'});lastShot=ts;}
+  bullets.forEach(b=>b.y+=b.vy);
+  bullets=bullets.filter(b=>b.y>-10);
+  waveTimer+=16;if(waveTimer>15000){wave++;waveTimer=0;enemyInterval=Math.max(400,enemyInterval-100);document.getElementById('waveVal').textContent=wave;}
+  if(ts-lastEnemy>enemyInterval){spawnEnemy();lastEnemy=ts;}
+  enemies.forEach(e=>{e.y+=e.vy+(wave*.2);e.x+=Math.sin(e.t)*e.sx;e.t+=.05;});
+  enemies=enemies.filter(e=>e.y<H+30);
+  bullets.forEach(b=>{enemies.forEach(e=>{if(!e.dead&&dist(b,e)<b.r+e.r){e.dead=true;b.dead=true;score+=10*wave;mkParticles(e.x,e.y,e.color);document.getElementById('scoreVal').textContent=score;}});});
+  bullets=bullets.filter(b=>!b.dead);enemies=enemies.filter(e=>!e.dead);
+  enemies.forEach(e=>{if(dist(player,e)<player.r+e.r-5){e.dead=true;hp--;document.getElementById('hpVal').textContent=hp;mkParticles(player.x,player.y,'#ff4444');if(hp<=0){gameOver();return;}}});
+  particles.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.life-=2;p.vy+=.1;});
+  particles=particles.filter(p=>p.life>0);
+  drawParticles();drawEnemies();drawBullets();drawPlayer();
+}
+function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y);}
+function spawnEnemy(){
+  const types=[{r:16,color:'#ff44aa',hp:1,sx:1},{r:22,color:'#ff8800',hp:2,sx:1.5},{r:12,color:'#aa00ff',hp:1,sx:2}];
+  const t=types[Math.floor(Math.random()*types.length)];
+  enemies.push({x:Math.random()*(W-40)+20,y:-20,r:t.r,vy:.8+wave*.1,sx:t.sx,color:t.color,t:Math.random()*Math.PI*2,dead:false});
+}
+function mkParticles(x,y,color){for(let i=0;i<10;i++)particles.push({x,y,vx:(Math.random()-0.5)*4,vy:(Math.random()-0.5)*4,r:Math.random()*4+2,life:100,color});}
+function drawParticles(){particles.forEach(p=>{ctx.globalAlpha=p.life/100;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fillStyle=p.color;ctx.fill();});ctx.globalAlpha=1;}
+function drawEnemies(){enemies.forEach(e=>{ctx.save();ctx.shadowColor=e.color;ctx.shadowBlur=12;ctx.beginPath();ctx.arc(e.x,e.y,e.r,0,Math.PI*2);ctx.fillStyle=e.color;ctx.fill();ctx.font=`${e.r}px Arial`;ctx.fillStyle='#fff';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('👾',e.x,e.y);ctx.restore();});}
+function drawBullets(){bullets.forEach(b=>{ctx.save();ctx.shadowColor=b.color;ctx.shadowBlur=10;ctx.beginPath();ctx.arc(b.x,b.y,b.r,0,Math.PI*2);ctx.fillStyle=b.color;ctx.fill();ctx.restore();});}
+function drawPlayer(){ctx.save();ctx.shadowColor='#00ffff';ctx.shadowBlur=20;ctx.font=`${player.r*2}px Arial`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('🧙',player.x,player.y);ctx.restore();}
+async function gameOver(){
+  running=false;cancelAnimationFrame(raf);
+  await SB.from('scores').insert({game_date:'2026-05-08',nickname,score});
+  const {data}=await SB.from('scores').select('nickname,score').eq('game_date','2026-05-08').order('score',{ascending:false}).limit(5);
+  document.getElementById('hud').style.display='none';
+  document.getElementById('overNick').textContent=nickname+'님의 결과';
+  document.getElementById('overScore').textContent='⭐ '+score+' 점';
+  let html='';if(data)data.forEach((r,i)=>{html+=`<div class="lb-row"><span>${['🥇','🥈','🥉','4️⃣','5️⃣'][i]} ${r.nickname}</span><span>${r.score}</span></div>`;});
+  document.getElementById('lbList').innerHTML=html||'<div style="color:#aaa;text-align:center">기록 없음</div>';
+  document.getElementById('overScreen').style.display='flex';
+}
+</script>
+</body>
+</html>
