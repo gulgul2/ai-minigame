@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>음식 낚시 게임</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#1a1a2e;font-family:'Arial',sans-serif;overflow:hidden;}
+canvas{position:fixed;top:0;left:0;z-index:1;width:100%;height:100%;}
+#nickScreen,#gameoverScreen{position:fixed;z-index:10;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,0.85);}
+h1{color:#FFD700;font-size:2em;margin-bottom:20px;text-shadow:0 0 10px #FFD700;}
+.nick-btns{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-bottom:20px;}
+.nick-btn{padding:12px 24px;font-size:1.1em;border:2px solid #888;border-radius:12px;background:#222;color:#fff;cursor:pointer;transition:all .2s;}
+.nick-btn.selected{border-color:#FFD700;background:#FFD700;color:#000;}
+#startBtn,#retryBtn{padding:14px 40px;font-size:1.2em;border:none;border-radius:14px;background:#FFD700;color:#000;cursor:pointer;font-weight:bold;margin-top:10px;}
+#hud{position:fixed;top:10px;left:10px;z-index:5;color:#fff;font-size:1.1em;text-shadow:1px 1px 3px #000;}
+#gameoverScreen h2{color:#fff;font-size:1.5em;margin:10px 0;}
+#gameoverScreen p{color:#FFD700;font-size:1.8em;margin-bottom:15px;}
+#leaderboard{color:#fff;font-size:1em;margin-bottom:15px;text-align:center;}
+#leaderboard div{padding:4px 0;border-bottom:1px solid #444;}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">점수: 0 | 시간: 30</div>
+<div id="nickScreen">
+  <h1>🎣 음식 낚시</h1>
+  <div class="nick-btns">
+    <button class="nick-btn" onclick="selectNick(this,'태형')">태형</button>
+    <button class="nick-btn" onclick="selectNick(this,'상이')">상이</button>
+    <button class="nick-btn" onclick="selectNick(this,'세준')">세준</button>
+    <button class="nick-btn" onclick="selectNick(this,'영근')">영근</button>
+  </div>
+  <button id="startBtn" onclick="startGame()">START</button>
+</div>
+<div id="gameoverScreen" style="display:none;">
+  <h1>🎣 음식 낚시</h1>
+  <h2 id="goNick"></h2>
+  <p id="goScore"></p>
+  <div id="leaderboard"></div>
+  <button id="retryBtn" onclick="resetGame()">다시하기</button>
+</div>
+<script>
+const SB = window.supabase.createClient('https://zypthfexxjcsguycjggr.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5cHRoZmV4eGpjc2d1eWNqZ2dyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3Njc2NzksImV4cCI6MjA5MjM0MzY3OX0.HaC4ltXQrO7_BQCeLqBVtvCBs4wL3Hzy6Ow_mO24vs0');
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+let W,H,nick='',score=0,timeLeft=30,running=false,animId,timerInterval;
+let rod={x:0,y:0},line={x:0,y:0,casting:false,speed:0},foods=[],bubbles=[];
+const FOODS=['🍣','🍜','🍔','🍕','🦀','🦞','🦑','🐟','🍱','🎂'];
+const SCORES={0:10,1:15,2:8,3:8,4:20,5:25,6:18,7:12,8:10,9:5};
+function resize(){W=canvas.width=window.innerWidth;H=canvas.height=window.innerHeight;rod.x=W/2;rod.y=H*0.18;}
+window.addEventListener('resize',resize);resize();
+function selectNick(el,n){document.querySelectorAll('.nick-btn').forEach(b=>b.classList.remove('selected'));el.classList.add('selected');nick=n;}
+function startGame(){if(!nick)return alert('닉네임을 선택하세요!');document.getElementById('nickScreen').style.display='none';initGame();running=true;loop();timerInterval=setInterval(()=>{timeLeft--;updateHUD();if(timeLeft<=0)endGame();},1000);}
+function initGame(){score=0;timeLeft=30;foods=[];bubbles=[];line={x:rod.x,y:rod.y,casting:false,speed:0};for(let i=0;i<8;i++)spawnFood();updateHUD();}
+function spawnFood(){foods.push({x:Math.random()*(W-80)+40,y:H*0.55+Math.random()*(H*0.35),idx:Math.floor(Math.random()*FOODS.length),size:28+Math.random()*14,caught:false,dy:(Math.random()-.5)*0.5});}
+function spawnBubble(x,y){for(let i=0;i<6;i++)bubbles.push({x,y,r:4+Math.random()*8,vx:(Math.random()-.5)*3,vy:-2-Math.random()*3,life:1});}
+function updateHUD(){document.getElementById('hud').textContent=`점수: ${score} | 시간: ${timeLeft}`;}
+function drawWater(){ctx.save();let gy=ctx.createLinearGradient(0,H*.45,0,H);gy.addColorStop(0,'#1a6b8a');gy.addColorStop(1,'#0d2d3a');ctx.fillStyle=gy;ctx.fillRect(0,H*.45,W,H*.55);for(let i=0;i<5;i++){ctx.strokeStyle='rgba(255,255,255,0.08)';ctx.beginPath();ctx.moveTo(0,H*.45+i*18);ctx.lineTo(W,H*.45+i*18+Math.sin(Date.now()*.001+i)*5);ctx.stroke();}ctx.restore();}
+function drawSky(){let gy=ctx.createLinearGradient(0,0,0,H*.5);gy.addColorStop(0,'#87CEEB');gy.addColorStop(1,'#b0e0ff');ctx.fillStyle=gy;ctx.fillRect(0,0,W,H*.5);}
+function drawRod(){ctx.save();ctx.strokeStyle='#8B4513';ctx.lineWidth=5;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(rod.x-18,rod.y+10);ctx.lineTo(rod.x,rod.y-30);ctx.stroke();if(line.casting){ctx.strokeStyle='#ccc';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(rod.x,rod.y-30);ctx.lineTo(line.x,line.y);ctx.stroke();ctx.beginPath();ctx.arc(line.x,line.y,7,0,Math.PI*2);ctx.fillStyle='#e74c3c';ctx.fill();}ctx.restore();}
+function drawFoods(){foods.forEach(f=>{if(f.caught)return;ctx.save();ctx.font=`${f.size}px serif`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.globalAlpha=0.95;ctx.fillText(FOODS[f.idx],f.x,f.y);ctx.restore();});}
+function drawBubbles(){bubbles.forEach(b=>{ctx.save();ctx.globalAlpha=b.life*0.7;ctx.strokeStyle='#7EC8E3';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(b.x,b.y,b.r,0,Math.PI*2);ctx.stroke();ctx.restore();});}
+function updateFoods(){foods.forEach(f=>{f.y+=f.dy;if(f.y>H*.92)f.dy=-Math.abs(f.dy);if(f.y<H*.5)f.dy=Math.abs(f.dy);});}
+function updateBubbles(){for(let i=bubbles.length-1;i>=0;i--){let b=bubbles[i];b.x+=b.vx;b.y+=b.vy;b.life-=0.04;if(b.life<=0)bubbles.splice(i,1);}}
+function castLine(tx,ty){if(!running)return;line.casting=true;line.x=rod.x;line.y=rod.y-30;let dx=tx-rod.x,dy=ty-(rod.y-30),dist=Math.sqrt(dx*dx+dy*dy);line.tx=tx;line.ty=ty;line.vx=dx/dist*12;line.vy=dy/dist*12;}
+function updateLine(){if(!line.casting)return;line.x+=line.vx;line.y+=line.vy;let dx=line.tx-line.x,dy=line.ty-line.y;if(Math.sqrt(dx*dx+dy*dy)<14){checkCatch();line.casting=false;}}
+function checkCatch(){foods.forEach((f,i)=>{if(f.caught)return;let dx=line.x-f.x,dy=line.y-f.y;if(Math.sqrt(dx*dx+dy*dy)<f.size){f.caught=true;score+=SCORES[f.idx]||10;updateHUD();spawnBubble(f.x,f.y);setTimeout(()=>{foods.splice(foods.indexOf(f),1);spawnFood();},300);}});}
+function loop(){if(!running)return;ctx.clearRect(0,0,W,H);drawSky();drawWater();drawFoods();drawBubbles();drawRod();updateLine();updateFoods();updateBubbles();animId=requestAnimationFrame(loop);}
+async function endGame(){running=false;cancelAnimationFrame(animId);clearInterval(timerInterval);await SB.from('scores').insert({game_date:'2026-05-10',nickname:nick,score});const{data}=await SB.from('scores').select('nickname,score').eq('game_date','2026-05-10').order('score',{ascending:false}).limit(5);document.getElementById('goNick').textContent=nick+'님의 결과';document.getElementById('goScore').textContent='점수: '+score;let lb=document.getElementById('leaderboard');lb.innerHTML='<b>🏆 TOP 5</b><br>';(data||[]).forEach((r,i)=>{lb.innerHTML+=`<div>${i+1}. ${r.nickname} - ${r.score}점</div>`;});document.getElementById('gameoverScreen').style.display='flex';}
+function resetGame(){document.getElementById('gameoverScreen').style.display='none';document.getElementById('nickScreen').style.display='flex';nick='';document.querySelectorAll('.nick-btn').forEach(b=>b.classList.remove('selected'));}
+function getPos(e){let r=canvas.getBoundingClientRect(),sx=W/r.width,sy=H/r.height;if(e.touches)return{x:(e.touches[0].clientX-r.left)*sx,y:(e.touches[0].clientY-r.top)*sy};return{x:(e.clientX-r.left)*sx,y:(e.clientY-r.top)*sy};}
+canvas.addEventListener('mousedown',e=>{let p=getPos(e);castLine(p.x,p.y);});
+canvas.addEventListener('mousemove',()=>{});
+canvas.addEventListener('mouseup',()=>{});
+canvas.addEventListener('touchstart',e=>{e.preventDefault();let p=getPos(e);castLine(p.x,p.y);},{passive:false});
+canvas.addEventListener('touchmove',e=>{e.preventDefault();},{passive:false});
+canvas.addEventListener('touchend',e=>{e.preventDefault();},{passive:false});
+</script>
+</body>
+</html>
