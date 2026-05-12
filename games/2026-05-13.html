@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>푸드 리듬</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #1a0a2e; font-family: 'Arial', sans-serif; overflow: hidden; }
+canvas { position: fixed; top: 0; left: 0; z-index: 1; width: 100%; height: 100%; }
+.screen { position: fixed; z-index: 10; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+#nickScreen { background: linear-gradient(135deg, #1a0a2e, #2d1b4e); }
+#overScreen { background: rgba(10,5,20,0.95); display: none; }
+h1 { color: #ff6b9d; font-size: 2.2em; margin-bottom: 8px; text-shadow: 0 0 20px #ff6b9d; }
+.sub { color: #ffd700; font-size: 1em; margin-bottom: 30px; }
+.nick-btns { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin-bottom: 24px; }
+.nick-btn { padding: 12px 22px; border: 2px solid #ff6b9d; background: transparent; color: #fff; border-radius: 30px; font-size: 1em; cursor: pointer; transition: all 0.2s; }
+.nick-btn.active { background: #ff6b9d; color: #1a0a2e; font-weight: bold; transform: scale(1.1); }
+#startBtn { padding: 14px 40px; background: linear-gradient(90deg,#ff6b9d,#ffd700); border: none; border-radius: 30px; color: #1a0a2e; font-size: 1.2em; font-weight: bold; cursor: pointer; box-shadow: 0 0 20px #ff6b9d88; }
+#startBtn:disabled { opacity: 0.4; cursor: not-allowed; }
+#overScreen h2 { color: #ffd700; font-size: 1.8em; margin-bottom: 8px; }
+#finalScore { color: #ff6b9d; font-size: 2.5em; font-weight: bold; margin-bottom: 20px; }
+#leaderboard { background: rgba(255,255,255,0.05); border-radius: 12px; padding: 16px 28px; margin-bottom: 24px; min-width: 260px; }
+#leaderboard h3 { color: #ffd700; margin-bottom: 10px; text-align: center; }
+.lb-row { color: #fff; padding: 5px 0; display: flex; justify-content: space-between; font-size: 0.95em; border-bottom: 1px solid rgba(255,255,255,0.08); }
+#retryBtn { padding: 12px 36px; background: linear-gradient(90deg,#ff6b9d,#ffd700); border: none; border-radius: 30px; color: #1a0a2e; font-size: 1.1em; font-weight: bold; cursor: pointer; }
+#hud { position: fixed; top: 12px; left: 0; width: 100%; z-index: 5; display: none; justify-content: space-between; padding: 0 16px; pointer-events: none; }
+#hud span { color: #fff; font-size: 1em; background: rgba(0,0,0,0.4); padding: 4px 12px; border-radius: 20px; }
+</style>
+</head>
+<body>
+<div id="nickScreen" class="screen">
+  <h1>🍔 푸드 리듬 🎵</h1>
+  <p class="sub">음식을 두드려라!</p>
+  <div class="nick-btns">
+    <button class="nick-btn" onclick="selNick(this,'태형')">태형</button>
+    <button class="nick-btn" onclick="selNick(this,'상이')">상이</button>
+    <button class="nick-btn" onclick="selNick(this,'세준')">세준</button>
+    <button class="nick-btn" onclick="selNick(this,'영근')">영근</button>
+  </div>
+  <button id="startBtn" onclick="startGame()" disabled>START</button>
+</div>
+<div id="hud"><span id="scoreHud">점수: 0</span><span id="comboHud">콤보: 0</span></div>
+<canvas id="c"></canvas>
+<div id="overScreen" class="screen">
+  <h2>게임 오버!</h2>
+  <div id="finalScore">0점</div>
+  <div id="leaderboard"><h3>🏆 리더보드</h3><div id="lbList">불러오는 중...</div></div>
+  <button id="retryBtn" onclick="retry()">다시하기</button>
+</div>
+<script>
+const SB = window.supabase.createClient('https://zypthfexxjcsguycjggr.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5cHRoZmV4eGpjc2d1eWNqZ2dyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3Njc2NzksImV4cCI6MjA5MjM0MzY3OX0.HaC4ltXQrO7_BQCeLqBVtvCBs4wL3Hzy6Ow_mO24vs0');
+const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+const FOODS=['🍔','🍕','🍜','🍣','🌮','🍩','🍦','🍎','🍇','🥪'];
+const COLORS=['#ff6b9d','#ffd700','#00e5ff','#ff9100','#b2ff59','#ea80fc'];
+let nick='',score=0,combo=0,hp=3,notes=[],particles=[],running=false,raf,lastTime=0,spawnTimer=0,bpm=120,beatInterval=500;
+function selNick(el,n){document.querySelectorAll('.nick-btn').forEach(b=>b.classList.remove('active'));el.classList.add('active');nick=n;document.getElementById('startBtn').disabled=false;}
+function resize(){cv.width=window.innerWidth;cv.height=window.innerHeight;}
+window.addEventListener('resize',resize);resize();
+const LANE_N=4;
+function getLanes(){const w=cv.width,lw=w/LANE_N;return Array.from({length:LANE_N},(_,i)=>lw*i+lw/2);}
+const TARGET_Y=()=>cv.height-100;
+function spawnNote(){const lanes=getLanes();const li=Math.floor(Math.random()*LANE_N);const food=FOODS[Math.floor(Math.random()*FOODS.length)];const col=COLORS[Math.floor(Math.random()*COLORS.length)];notes.push({x:lanes[li],y:-30,food,col,speed:cv.height/2.2,hit:false,miss:false,li});}
+function addParticle(x,y,col){for(let i=0;i<8;i++)particles.push({x,y,vx:(Math.random()-0.5)*6,vy:(Math.random()-3)*5,col,life:1,size:Math.random()*14+6});}
+function drawBg(){ctx.fillStyle='#1a0a2e';ctx.fillRect(0,0,cv.width,cv.height);const lanes=getLanes();lanes.forEach(lx=>{ctx.strokeStyle='rgba(255,255,255,0.06)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(lx,0);ctx.lineTo(lx,cv.height);ctx.stroke();});const ty=TARGET_Y();ctx.strokeStyle='rgba(255,107,157,0.4)';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(0,ty);ctx.lineTo(cv.width,ty);ctx.stroke();}
+function drawLaneTargets(){const lanes=getLanes();const ty=TARGET_Y();lanes.forEach(lx=>{ctx.beginPath();ctx.arc(lx,ty,28,0,Math.PI*2);ctx.fillStyle='rgba(255,255,255,0.07)';ctx.fill();ctx.strokeStyle='rgba(255,107,157,0.5)';ctx.lineWidth=2;ctx.stroke();});}
+function drawNotes(dt){notes.forEach(n=>{if(n.hit||n.miss)return;n.y+=n.speed*dt;ctx.font='36px serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.shadowColor=n.col;ctx.shadowBlur=16;ctx.fillText(n.food,n.x,n.y);ctx.shadowBlur=0;});}
+function drawParticles(dt){particles=particles.filter(p=>p.life>0);particles.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=0.18;p.life-=dt*2;ctx.globalAlpha=p.life;ctx.font=p.size+'px serif';ctx.fillText('✨',p.x,p.y);ctx.globalAlpha=1;});}
+function drawHp(){for(let i=0;i<3;i++){ctx.font='22px serif';ctx.fillText(i<hp?'❤️':'🖤',18+i*28,cv.height-18);}}
+function showText(txt,x,y,col){ctx.font='bold 28px Arial';ctx.fillStyle=col;ctx.textAlign='center';ctx.fillText(txt,x,y);setTimeout(()=>{},300);}
+let popups=[];
+function addPopup(txt,x,y,col){popups.push({txt,x,y,col,life:1});}
+function drawPopups(dt){popups=popups.filter(p=>p.life>0);popups.forEach(p=>{p.y-=60*dt;p.life-=dt*2;ctx.globalAlpha=p.life;ctx.font='bold 26px Arial';ctx.fillStyle=p.col;ctx.textAlign='center';ctx.fillText(p.txt,p.x,p.y);ctx.globalAlpha=1;});}
+function checkHit(px,py){const ty=TARGET_Y();const lanes=getLanes();let hit=false;notes.forEach(n=>{if(n.hit||n.miss)return;const dx=Math.abs(n.x-px),dy=Math.abs(n.y-ty);if(dx<50&&dy<60){n.hit=true;hit=true;const diff=Math.abs(n.y-ty);let label='PERFECT!',col='#ffd700',pts=100;if(diff>30){label='GOOD';col='#00e5ff';pts=50;}score+=pts*(1+Math.floor(combo/10));combo++;addParticle(n.x,n.y,n.col);addPopup(label,n.x,n.y-40,col);updateHud();}});return hit;}
+function updateHud(){document.getElementById('scoreHud').textContent='점수: '+score;document.getElementById('comboHud').textContent='콤보: '+combo;}
+function loop(ts){if(!running)return;const dt=Math.min((ts-lastTime)/1000,0.05);lastTime=ts;spawnTimer+=dt*1000;if(spawnTimer>=beatInterval){spawnTimer-=beatInterval;spawnNote();}const ty=TARGET_Y();notes.forEach(n=>{if(!n.hit&&!n.miss&&n.y>ty+70){n.miss=true;hp--;combo=0;addPopup('MISS',n.x,ty-20,'#ff4444');updateHud();if(hp<=0){endGame();return;}}});notes=notes.filter(n=>!(n.hit||n.miss)&&n.y<cv.height+60);drawBg();drawLaneTargets();drawNotes(dt);drawParticles(dt);drawPopups(dt);drawHp();raf=requestAnimationFrame(loop);}
+function startGame(){document.getElementById('nickScreen').style.display='none';document.getElementById('hud').style.display='flex';score=0;combo=0;hp=3;notes=[];particles=[];popups=[];spawnTimer=0;bpm=120;beatInterval=500;running=true;updateHud();lastTime=performance.now();raf=requestAnimationFrame(loop);}
+async function endGame(){running=false;cancelAnimationFrame(raf);document.getElementById('hud').style.display='none';document.getElementById('finalScore').textContent=score+'점';document.getElementById('overScreen').style.display='flex';await SB.from('scores').insert({game_date:'2026-05-13',nickname:nick,score});const {data}=await SB.from('scores').select('nickname,score').eq('game_date','2026-05-13').order('score',{ascending:false}).limit(5);const lb=document.getElementById('lbList');lb.innerHTML='';if(data)data.forEach((r,i)=>{const d=document.createElement('div');d.className='lb-row';d.innerHTML=`<span>${['🥇','🥈','🥉','4️⃣','5️⃣'][i]} ${r.nickname}</span><span>${r.score}점</span>`;lb.appendChild(d);});}
+function retry(){document.getElementById('overScreen').style.display='none';score=0;combo=0;hp=3;notes=[];particles=[];popups=[];spawnTimer=0;document.getElementById('hud').style.display='flex';updateHud();running=true;lastTime=performance.now();raf=requestAnimationFrame(loop);}
+function handleInput(px,py){if(!running)return;checkHit(px,py);}
+cv.addEventListener('mousedown',e=>handleInput(e.clientX,e.clientY));
+cv.addEventListener('touchstart',e=>{e.preventDefault();Array.from(e.changedTouches).forEach(t=>handleInput(t.clientX,t.clientY));},{passive:false});
+cv.addEventListener('mousemove',()=>{});cv.addEventListener('mouseup',()=>{});cv.addEventListener('touchmove',e=>e.preventDefault(),{passive:false});
+cv.addEventListener('touchend',e=>e.preventDefault(),{passive:false});
+</script>
+</body>
+</html>
