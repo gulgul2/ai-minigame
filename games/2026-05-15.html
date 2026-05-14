@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>바다 레이싱</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#006994;font-family:'Arial',sans-serif;overflow:hidden;}
+canvas{position:fixed;top:0;left:0;z-index:1;width:100%;height:100%;}
+#nickScreen,#gameoverScreen{position:fixed;z-index:10;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(180deg,#003366,#006994,#00aacc);}
+h1{color:#fff;font-size:2em;margin-bottom:10px;text-shadow:0 2px 8px #000;}
+.sub{color:#aef;font-size:1em;margin-bottom:30px;}
+.nick-btns{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;margin-bottom:20px;}
+.nick-btn{padding:12px 22px;font-size:1.1em;border:3px solid #fff;border-radius:30px;background:rgba(255,255,255,0.15);color:#fff;cursor:pointer;transition:.2s;}
+.nick-btn.selected{background:#00ccff;border-color:#00ccff;color:#003;}
+#startBtn{padding:14px 40px;font-size:1.2em;border:none;border-radius:30px;background:#00ccff;color:#003;font-weight:bold;cursor:pointer;box-shadow:0 4px 16px #000a;}
+#startBtn:disabled{background:#555;color:#aaa;cursor:default;}
+#hud{position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:5;background:rgba(0,0,0,0.45);color:#fff;padding:6px 20px;border-radius:20px;font-size:1em;pointer-events:none;}
+#gameoverScreen h2{color:#fff;font-size:1.8em;margin-bottom:8px;}
+#gameoverScreen .score{color:#0ff;font-size:1.4em;margin-bottom:20px;}
+#board{background:rgba(0,0,0,0.35);border-radius:16px;padding:14px 28px;margin-bottom:20px;color:#fff;min-width:200px;}
+#board h3{color:#aef;margin-bottom:8px;text-align:center;}
+#board ol{padding-left:20px;font-size:1em;line-height:1.8;}
+#restartBtn{padding:12px 36px;font-size:1.1em;border:none;border-radius:30px;background:#00ccff;color:#003;font-weight:bold;cursor:pointer;}
+</style>
+</head>
+<body>
+<div id="nickScreen">
+  <h1>🌊 바다 레이싱</h1>
+  <div class="sub">2026-05-15</div>
+  <div class="nick-btns">
+    <button class="nick-btn" onclick="selectNick(this,'태형')">태형</button>
+    <button class="nick-btn" onclick="selectNick(this,'상이')">상이</button>
+    <button class="nick-btn" onclick="selectNick(this,'세준')">세준</button>
+    <button class="nick-btn" onclick="selectNick(this,'영근')">영근</button>
+  </div>
+  <button id="startBtn" disabled onclick="startGame()">START</button>
+</div>
+<canvas id="c"></canvas>
+<div id="hud">점수: 0</div>
+<div id="gameoverScreen" style="display:none;">
+  <h2>🏁 게임 오버</h2>
+  <div class="score" id="finalScore"></div>
+  <div id="board"><h3>🏆 리더보드</h3><ol id="boardList"></ol></div>
+  <button id="restartBtn" onclick="location.reload()">다시하기</button>
+</div>
+<script>
+const SB=window.supabase.createClient('https://zypthfexxjcsguycjggr.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5cHRoZmV4eGpjc2d1eWNqZ2dyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3Njc2NzksImV4cCI6MjA5MjM0MzY3OX0.HaC4ltXQrO7_BQCeLqBVtvCBs4wL3Hzy6Ow_mO24vs0');
+let nickname='';
+function selectNick(el,name){document.querySelectorAll('.nick-btn').forEach(b=>b.classList.remove('selected'));el.classList.add('selected');nickname=name;document.getElementById('startBtn').disabled=false;}
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+let W,H,running=false,score=0,frame=0,speed=3,touchX=null;
+let player,obstacles=[],bubbles=[],waves=[];
+function resize(){W=canvas.width=window.innerWidth;H=canvas.height=window.innerHeight;}
+window.addEventListener('resize',resize);
+function initGame(){
+  resize();
+  player={x:W/2,y:H*0.75,w:44,h:28,color:'#ff4444'};
+  obstacles=[];bubbles=[];waves=[];score=0;frame=0;speed=3;
+  document.getElementById('hud').style.display='block';
+  for(let i=0;i<18;i++)bubbles.push({x:Math.random()*W,y:Math.random()*H,r:Math.random()*4+2,s:Math.random()*1.5+0.5});
+  for(let i=0;i<5;i++)waves.push({x:Math.random()*W,y:Math.random()*H,w:Math.random()*80+40,alpha:Math.random()*0.3+0.1,s:Math.random()*0.8+0.4});
+}
+function spawnObstacle(){
+  const types=['jellyfish','rock','shark'];
+  const t=types[Math.floor(Math.random()*types.length)];
+  obstacles.push({x:Math.random()*(W-60)+30,y:-40,w:36,h:36,type:t,wobble:0});
+}
+function drawBoat(x,y,w,h,color){
+  ctx.save();ctx.translate(x,y);
+  ctx.fillStyle=color;
+  ctx.beginPath();ctx.moveTo(-w/2,h/3);ctx.lineTo(w/2,h/3);ctx.lineTo(w/2.5,-h/2);ctx.lineTo(-w/2.5,-h/2);ctx.closePath();ctx.fill();
+  ctx.fillStyle='#fff';ctx.fillRect(-4,-h/2-8,8,10);
+  ctx.fillStyle='rgba(255,255,200,0.9)';ctx.beginPath();ctx.moveTo(0,-h/2-8);ctx.lineTo(16,-h/2+2);ctx.lineTo(0,-h/2+2);ctx.closePath();ctx.fill();
+  ctx.restore();
+}
+function drawObstacle(o){
+  ctx.save();ctx.translate(o.x,o.y);
+  if(o.type==='jellyfish'){
+    ctx.fillStyle='rgba(220,100,255,0.85)';
+    ctx.beginPath();ctx.arc(0,-5,16,Math.PI,0);ctx.closePath();ctx.fill();
+    ctx.strokeStyle='rgba(200,80,240,0.6)';ctx.lineWidth=2;
+    for(let i=-2;i<=2;i++){ctx.beginPath();ctx.moveTo(i*6,10);ctx.lineTo(i*6+Math.sin(o.wobble+i)*4,26);ctx.stroke();}
+  }else if(o.type==='rock'){
+    ctx.fillStyle='#778';
+    ctx.beginPath();ctx.ellipse(0,0,18,13,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#99a';ctx.beginPath();ctx.ellipse(-5,-5,8,6,-.3,0,Math.PI*2);ctx.fill();
+  }else{
+    ctx.fillStyle='#3399cc';
+    ctx.beginPath();ctx.moveTo(-18,4);ctx.lineTo(18,4);ctx.lineTo(10,-4);ctx.lineTo(-10,-4);ctx.closePath();ctx.fill();
+    ctx.fillStyle='#aaddff';ctx.beginPath();ctx.moveTo(10,-4);ctx.lineTo(28,-12);ctx.lineTo(20,0);ctx.closePath();ctx.fill();
+  }
+  ctx.restore();
+}
+function drawBg(){
+  const g=ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'#003a6e');g.addColorStop(1,'#005f9e');
+  ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  waves.forEach(w=>{
+    ctx.strokeStyle=`rgba(150,220,255,${w.alpha})`;ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(w.x,w.y);
+    ctx.bezierCurveTo(w.x+w.w/3,w.y-8,w.x+w.w*2/3,w.y+8,w.x+w.w,w.y);
+    ctx.stroke();
+    w.x-=w.s;if(w.x+w.w<0)w.x=W+10;
+  });
+  bubbles.forEach(b=>{
+    ctx.fillStyle=`rgba(180,230,255,0.5)`;
+    ctx.beginPath();ctx.arc(b.x,b.y,b.r,0,Math.PI*2);ctx.fill();
+    b.y-=b.s;if(b.y+b.r<0){b.y=H+b.r;b.x=Math.random()*W;}
+  });
+}
+function collide(a,b){return Math.abs(a.x-b.x)<(a.w/2+b.w/2-6)&&Math.abs(a.y-b.y)<(a.h/2+b.h/2-6);}
+function loop(){
+  if(!running)return;
+  ctx.clearRect(0,0,W,H);drawBg();
+  frame++;score=Math.floor(frame/6);
+  if(frame%80===0)spawnObstacle();
+  speed=3+frame/400;
+  if(touchX!==null){const dx=touchX-player.x;player.x+=dx*0.12;}
+  player.x=Math.max(player.w/2,Math.min(W-player.w/2,player.x));
+  obstacles.forEach(o=>{o.y+=speed;o.wobble+=0.15;});
+  obstacles=obstacles.filter(o=>o.y<H+50);
+  for(let o of obstacles){if(collide(player,o)){endGame();return;}}
+  obstacles.forEach(o=>drawObstacle(o));
+  drawBoat(player.x,player.y,player.w,player.h,player.color);
+  document.getElementById('hud').textContent='점수: '+score;
+  requestAnimationFrame(loop);
+}
+function startGame(){
+  document.getElementById('nickScreen').style.display='none';
+  running=true;initGame();loop();
+}
+async function endGame(){
+  running=false;
+  document.getElementById('hud').style.display='none';
+  document.getElementById('finalScore').textContent=nickname+'님의 점수: '+score;
+  await SB.from('scores').insert({game_date:'2026-05-15',nickname,score});
+  const {data}=await SB.from('scores').select('nickname,score').eq('game_date','2026-05-15').order('score',{ascending:false}).limit(5);
+  const ol=document.getElementById('boardList');ol.innerHTML='';
+  (data||[]).forEach((r,i)=>{const li=document.createElement('li');li.textContent=r.nickname+' - '+r.score;if(r.nickname===nickname&&r.score===score)li.style.color='#0ff';ol.appendChild(li);});
+  document.getElementById('gameoverScreen').style.display='flex';
+}
+function getX(e){if(e.touches&&e.touches.length)return e.touches[0].clientX;return e.clientX;}
+canvas.addEventListener('touchstart',e=>{touchX=getX(e);},{passive:true});
+canvas.addEventListener('touchmove',e=>{touchX=getX(e);},{passive:true});
+canvas.addEventListener('touchend',()=>{touchX=null;});
+canvas.addEventListener('mousedown',e=>{touchX=getX(e);});
+canvas.addEventListener('mousemove',e=>{if(touchX!==null)touchX=getX(e);});
+canvas.addEventListener('mouseup',()=>{touchX=null;});
+resize();
+</script>
+</body>
+</html>
