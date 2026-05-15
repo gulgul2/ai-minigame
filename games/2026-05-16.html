@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>숲 매치3</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#1a3a1a;font-family:'Segoe UI',sans-serif;overflow:hidden;}
+canvas{position:fixed;top:0;left:0;z-index:1;width:100%;height:100%;}
+#nickScreen,#overScreen{position:fixed;z-index:10;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(10,30,10,0.92);}
+h1{color:#7fff7f;font-size:2rem;margin-bottom:8px;text-shadow:0 0 12px #3f3;}
+.sub{color:#aed6ae;margin-bottom:28px;font-size:1rem;}
+.nick-btns{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-bottom:24px;}
+.nick-btn{background:#2d5a2d;color:#cfc;border:2px solid #4a8;padding:12px 22px;border-radius:12px;font-size:1.1rem;cursor:pointer;transition:all .2s;}
+.nick-btn.sel{background:#4a8a4a;border-color:#7fff7f;color:#fff;box-shadow:0 0 10px #3f3;}
+#startBtn,#retryBtn{background:#3a7a3a;color:#fff;border:none;padding:14px 40px;border-radius:14px;font-size:1.2rem;cursor:pointer;margin-top:8px;box-shadow:0 4px 14px #0a0;}
+#startBtn:hover,#retryBtn:hover{background:#4a9a4a;}
+#overScreen h2{color:#7fff7f;font-size:1.8rem;margin-bottom:6px;}
+#finalScore{color:#fff;font-size:1.3rem;margin-bottom:18px;}
+#board{background:#1a3a2a;border-radius:14px;padding:14px;margin-bottom:18px;min-width:220px;}
+#board h3{color:#aed6ae;margin-bottom:8px;font-size:1rem;text-align:center;}
+.lb-row{color:#cfc;font-size:0.95rem;padding:3px 0;border-bottom:1px solid #2a5a2a;display:flex;justify-content:space-between;}
+.lb-row span{color:#7fff7f;}
+#hud{position:fixed;top:0;left:0;width:100%;z-index:5;display:none;flex-direction:row;justify-content:space-between;align-items:center;padding:10px 16px;background:rgba(10,30,10,0.7);}
+#hudScore{color:#7fff7f;font-size:1.1rem;font-weight:bold;}
+#hudTime{color:#aed6ae;font-size:1rem;}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud"><div id="hudScore">점수: 0</div><div id="hudTime">⏱ 60</div></div>
+<div id="nickScreen">
+  <h1>🌲 숲 매치3</h1>
+  <div class="sub">2026-05-16</div>
+  <div class="nick-btns">
+    <button class="nick-btn" onclick="selNick(this,'태형')">태형</button>
+    <button class="nick-btn" onclick="selNick(this,'상이')">상이</button>
+    <button class="nick-btn" onclick="selNick(this,'세준')">세준</button>
+    <button class="nick-btn" onclick="selNick(this,'영근')">영근</button>
+  </div>
+  <button id="startBtn" onclick="startGame()">START</button>
+</div>
+<div id="overScreen" style="display:none">
+  <h2>게임 오버!</h2>
+  <div id="finalScore"></div>
+  <div id="board"><h3>🏆 리더보드</h3><div id="lbList"></div></div>
+  <button id="retryBtn" onclick="location.reload()">다시하기</button>
+</div>
+<script>
+const SB=window.supabase.createClient('https://zypthfexxjcsguycjggr.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5cHRoZmV4eGpjc2d1eWNqZ2dyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3Njc2NzksImV4cCI6MjA5MjM0MzY3OX0.HaC4ltXQrO7_BQCeLqBVtvCBs4wL3Hzy6Ow_mO24vs0');
+const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+const COLS=7,ROWS=8,TYPES=5,EMOJIS=['🍄','🌿','🌸','🍀','🦋'];
+const COLORS=['#8B4513','#228B22','#FF69B4','#00AA55','#6A5ACD'];
+let nick='',score=0,timeLeft=60,grid=[],sel=null,animating=false,tid,running=false;
+let cw,ch,ox,oy,cell;
+function selNick(el,n){document.querySelectorAll('.nick-btn').forEach(b=>b.classList.remove('sel'));el.classList.add('sel');nick=n;}
+function resize(){cw=cv.width=window.innerWidth;ch=cv.height=window.innerHeight;cell=Math.min(Math.floor(Math.min(cw,ch)*0.85/COLS),Math.floor(ch*0.8/ROWS));ox=Math.floor((cw-cell*COLS)/2);oy=Math.floor((ch-cell*ROWS)/2)+20;if(running)drawGrid();}
+window.addEventListener('resize',resize);
+function mkGrid(){grid=[];for(let r=0;r<ROWS;r++){grid[r]=[];for(let c=0;c<COLS;c++)grid[r][c]=randCell();}while(findMatches().length)resolveOnce();}
+function randCell(){return Math.floor(Math.random()*TYPES);}
+function resolveOnce(){let m=findMatches();m.forEach(([r,c])=>grid[r][c]=randCell());}
+function drawGrid(){
+  ctx.clearRect(0,0,cw,ch);
+  ctx.fillStyle='#0d2010';ctx.fillRect(0,0,cw,ch);
+  for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){
+    let x=ox+c*cell,y=oy+r*cell,pad=3,t=grid[r][c];
+    let isSel=sel&&sel[0]===r&&sel[1]===c;
+    ctx.fillStyle=isSel?'#5a8a5a':COLORS[t];
+    ctx.beginPath();roundRect(ctx,x+pad,y+pad,cell-pad*2,cell-pad*2,8);ctx.fill();
+    if(isSel){ctx.strokeStyle='#7fff7f';ctx.lineWidth=3;ctx.stroke();}
+    ctx.font=`${Math.floor(cell*0.55)}px serif`;ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(EMOJIS[t],x+cell/2,y+cell/2+2);
+  }
+}
+function roundRect(c,x,y,w,h,r){c.moveTo(x+r,y);c.lineTo(x+w-r,y);c.quadraticCurveTo(x+w,y,x+w,y+r);c.lineTo(x+w,y+h-r);c.quadraticCurveTo(x+w,y+h,x+w-r,y+h);c.lineTo(x+r,y+h);c.quadraticCurveTo(x,y+h,x,y+h-r);c.lineTo(x,y+r);c.quadraticCurveTo(x,y,x+r,y);}
+function getCell(px,py){let c=Math.floor((px-ox)/cell),r=Math.floor((py-oy)/cell);if(r>=0&&r<ROWS&&c>=0&&c<COLS)return[r,c];return null;}
+function findMatches(){
+  let m=new Set();
+  for(let r=0;r<ROWS;r++)for(let c=0;c<COLS-2;c++)if(grid[r][c]===grid[r][c+1]&&grid[r][c]===grid[r][c+2]){m.add(`${r},${c}`);m.add(`${r},${c+1}`);m.add(`${r},${c+2}`);}
+  for(let c=0;c<COLS;c++)for(let r=0;r<ROWS-2;r++)if(grid[r][c]===grid[r+1][c]&&grid[r][c]===grid[r+2][c]){m.add(`${r},${c}`);m.add(`${r+1},${c}`);m.add(`${r+2},${c}`);}
+  return [...m].map(s=>s.split(',').map(Number));
+}
+function adj(a,b){return(a[0]===b[0]&&Math.abs(a[1]-b[1])===1)||(a[1]===b[1]&&Math.abs(a[0]-b[0])===1);}
+function swap(a,b){let t=grid[a[0]][a[1]];grid[a[0]][a[1]]=grid[b[0]][b[1]];grid[b[0]][b[1]]=t;}
+function processMatches(){
+  let m=findMatches();
+  if(!m.length){animating=false;drawGrid();return;}
+  score+=m.length*10;document.getElementById('hudScore').textContent='점수: '+score;
+  m.forEach(([r,c])=>grid[r][c]=-1);
+  for(let c=0;c<COLS;c++){let col=grid.map(r=>r[c]).filter(v=>v>=0);while(col.length<ROWS)col.unshift(randCell());for(let r=0;r<ROWS;r++)grid[r][c]=col[r];}
+  drawGrid();setTimeout(processMatches,350);
+}
+function handleTap(px,py){
+  if(animating||!running)return;
+  let cell2=getCell(px,py);if(!cell2)return;
+  if(!sel){sel=cell2;drawGrid();return;}
+  if(sel[0]===cell2[0]&&sel[1]===cell2[1]){sel=null;drawGrid();return;}
+  if(adj(sel,cell2)){
+    animating=true;swap(sel,cell2);
+    let m=findMatches();
+    if(!m.length){swap(sel,cell2);animating=false;}
+    else processMatches();
+    sel=null;drawGrid();
+  }else{sel=cell2;drawGrid();}
+}
+let drag=null;
+function evPos(e){let t=e.touches?e.touches[0]:e;return[t.clientX,t.clientY];}
+cv.addEventListener('mousedown',e=>{drag=evPos(e);});
+cv.addEventListener('mouseup',e=>{if(drag){handleTap(...drag);drag=null;}});
+cv.addEventListener('touchstart',e=>{e.preventDefault();drag=evPos(e);},{passive:false});
+cv.addEventListener('touchend',e=>{e.preventDefault();if(drag){handleTap(...drag);drag=null;}},{passive:false});
+cv.addEventListener('touchmove',e=>{e.preventDefault();},{passive:false});
+cv.addEventListener('mousemove',()=>{});
+function startGame(){
+  if(!nick)return alert('닉네임을 선택해주세요!');
+  document.getElementById('nickScreen').style.display='none';
+  document.getElementById('hud').style.display='flex';
+  running=true;resize();mkGrid();drawGrid();
+  tid=setInterval(()=>{timeLeft--;document.getElementById('hudTime').textContent='⏱ '+timeLeft;if(timeLeft<=0){clearInterval(tid);endGame();}},1000);
+}
+async function endGame(){
+  running=false;animating=true;
+  document.getElementById('hud').style.display='none';
+  document.getElementById('finalScore').textContent=nick+' 님의 점수: '+score;
+  document.getElementById('overScreen').style.display='flex';
+  await SB.from('scores').insert({game_date:'2026-05-16',nickname:nick,score});
+  let{data}=await SB.from('scores').select('nickname,score').eq('game_date','2026-05-16').order('score',{ascending:false}).limit(5);
+  let html='';if(data)data.forEach((d,i)=>{html+=`<div class="lb-row"><span>${i+1}. ${d.nickname}</span><span>${d.score}</span></div>`;});
+  document.getElementById('lbList').innerHTML=html||'<div style="color:#aaa;text-align:center">데이터 없음</div>';
+}
+resize();
+</script>
+</body>
+</html>
