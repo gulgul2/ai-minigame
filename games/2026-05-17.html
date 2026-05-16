@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>동물 레이싱</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #1a1a2e; font-family: 'Arial', sans-serif; overflow: hidden; }
+canvas { position: fixed; top: 0; left: 0; z-index: 1; width: 100%; height: 100%; }
+#nickScreen, #overScreen { position: fixed; z-index: 10; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(10,10,30,0.93); color: #fff; }
+h1 { font-size: 2.2em; margin-bottom: 10px; color: #ffe066; text-shadow: 0 0 16px #ffb300; }
+.sub { font-size: 1em; color: #aaa; margin-bottom: 28px; }
+.nick-btns { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; margin-bottom: 24px; }
+.nick-btn { padding: 14px 28px; font-size: 1.2em; border: 3px solid #555; border-radius: 14px; background: #23234a; color: #fff; cursor: pointer; transition: all .2s; }
+.nick-btn.selected { border-color: #ffe066; background: #3a3a00; color: #ffe066; }
+#startBtn, #retryBtn { padding: 14px 40px; font-size: 1.2em; border: none; border-radius: 14px; background: linear-gradient(135deg,#ffe066,#ff9800); color: #1a1a2e; font-weight: bold; cursor: pointer; margin-top: 8px; }
+#hud { position: fixed; top: 10px; left: 0; width: 100%; z-index: 5; display: none; justify-content: space-between; padding: 0 18px; pointer-events: none; }
+#hud span { background: rgba(0,0,0,0.55); border-radius: 10px; padding: 6px 16px; font-size: 1.1em; color: #ffe066; font-weight: bold; }
+#overScreen h2 { font-size: 1.8em; color: #ffe066; margin-bottom: 6px; }
+#overScreen .scoreVal { font-size: 2.5em; font-weight: bold; color: #fff; margin-bottom: 18px; }
+#board { width: 86%; max-width: 340px; background: #16163a; border-radius: 14px; padding: 14px 18px; margin-bottom: 18px; }
+#board h3 { color: #ffe066; margin-bottom: 10px; font-size: 1em; }
+.rank-row { display: flex; justify-content: space-between; font-size: 1em; padding: 4px 0; border-bottom: 1px solid #2a2a5a; color: #ddd; }
+</style>
+</head>
+<body>
+<div id="nickScreen">
+  <h1>🐾 동물 레이싱</h1>
+  <div class="sub">닉네임을 선택하세요</div>
+  <div class="nick-btns">
+    <button class="nick-btn" onclick="selectNick(this,'태형')">태형</button>
+    <button class="nick-btn" onclick="selectNick(this,'상이')">상이</button>
+    <button class="nick-btn" onclick="selectNick(this,'세준')">세준</button>
+    <button class="nick-btn" onclick="selectNick(this,'영근')">영근</button>
+  </div>
+  <button id="startBtn" onclick="startGame()">START 🚀</button>
+</div>
+<canvas id="c"></canvas>
+<div id="hud" style="display:none;"><span id="hudScore">점수: 0</span><span id="hudLife">❤️❤️❤️</span></div>
+<div id="overScreen" style="display:none;">
+  <h2>게임 오버!</h2>
+  <div class="scoreVal" id="finalScore">0</div>
+  <div id="board"><h3>🏆 오늘의 리더보드</h3><div id="rankList">로딩중...</div></div>
+  <button id="retryBtn" onclick="location.reload()">다시하기 🔄</button>
+</div>
+<script>
+const SB = window.supabase.createClient('https://zypthfexxjcsguycjggr.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5cHRoZmV4eGpjc2d1eWNqZ2dyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3Njc2NzksImV4cCI6MjA5MjM0MzY3OX0.HaC4ltXQrO7_BQCeLqBVtvCBs4wL3Hzy6Ow_mO24vs0');
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let nickname='', score=0, life=3, running=false, animId;
+let player, obstacles, coins, bgOffset=0, speed, spawnTimer, coinTimer, lastTime=0;
+const ANIMALS=['🐻','🦊','🐸','🐨','🦁','🐯','🐺','🐼'];
+const OBSTACLES=['🦔','🦂','🌵','🪨','🐍'];
+const COINS=['🌟','💎','🍎'];
+function selectNick(el,name){
+  document.querySelectorAll('.nick-btn').forEach(b=>b.classList.remove('selected'));
+  el.classList.add('selected'); nickname=name;
+}
+function resize(){canvas.width=window.innerWidth;canvas.height=window.innerHeight;}
+window.addEventListener('resize',()=>{resize();if(player)player.y=canvas.height*0.7;});
+resize();
+function startGame(){
+  if(!nickname){alert('닉네임을 선택하세요!');return;}
+  document.getElementById('nickScreen').style.display='none';
+  document.getElementById('hud').style.display='flex';
+  initGame(); running=true; requestAnimationFrame(loop);
+}
+function initGame(){
+  score=0; life=3; speed=3; spawnTimer=0; coinTimer=0; bgOffset=0; obstacles=[]; coins=[];
+  player={x:canvas.width*0.18, y:canvas.height*0.7, w:54, h:54, vy:0, onGround:true, animal:ANIMALS[Math.floor(Math.random()*ANIMALS.length)], jumping:false};
+  updateHUD();
+}
+function updateHUD(){
+  document.getElementById('hudScore').textContent='점수: '+score;
+  document.getElementById('hudLife').textContent='❤️'.repeat(Math.max(0,life));
+}
+const GROUND=()=>canvas.height*0.78;
+function jump(){if(player.onGround){player.vy=-canvas.height*0.022;player.onGround=false;}}
+canvas.addEventListener('touchstart',e=>{e.preventDefault();jump();},{passive:false});
+canvas.addEventListener('touchmove',e=>{e.preventDefault();},{passive:false});
+canvas.addEventListener('touchend',e=>{e.preventDefault();},{passive:false});
+canvas.addEventListener('mousedown',()=>jump());
+canvas.addEventListener('mousemove',()=>{});
+canvas.addEventListener('mouseup',()=>{});
+function spawnObstacle(){
+  const h=40+Math.random()*30;
+  obstacles.push({x:canvas.width+60,y:GROUND()-h+10,w:44,h,emoji:OBSTACLES[Math.floor(Math.random()*OBSTACLES.length)]});
+}
+function spawnCoin(){
+  coins.push({x:canvas.width+40,y:GROUND()-80-Math.random()*80,w:32,h:32,emoji:COINS[Math.floor(Math.random()*COINS.length)],collected:false});
+}
+function loop(ts){
+  if(!running)return;
+  const dt=Math.min((ts-lastTime)/16.67,3); lastTime=ts;
+  speed+=0.003*dt; score+=Math.round(dt*0.7);
+  bgOffset=(bgOffset+speed*1.2*dt)%(canvas.width);
+  spawnTimer+=dt; coinTimer+=dt;
+  if(spawnTimer>60-Math.min(speed*3,40)){spawnTimer=0;spawnObstacle();}
+  if(coinTimer>45){coinTimer=0;spawnCoin();}
+  player.vy+=0.7*dt;
+  player.y+=player.vy*dt;
+  const gnd=GROUND();
+  if(player.y>=gnd){player.y=gnd;player.vy=0;player.onGround=true;}
+  obstacles.forEach(o=>o.x-=speed*dt);
+  coins.forEach(c=>c.x-=speed*dt);
+  obstacles=obstacles.filter(o=>o.x>-80);
+  coins=coins.filter(c=>c.x>-60);
+  obstacles.forEach(o=>{if(collide(player,o)){hitObstacle(o);}});
+  coins.forEach(c=>{if(!c.collected&&collide(player,c)){c.collected=true;score+=50;updateHUD();}});
+  coins=coins.filter(c=>!c.collected);
+  draw(); updateHUD();
+  animId=requestAnimationFrame(loop);
+}
+let hitCooldown=0;
+function hitObstacle(o){
+  if(hitCooldown>0)return;
+  life--; hitCooldown=60; updateHUD();
+  obstacles=obstacles.filter(ob=>ob!==o);
+  if(life<=0){endGame();}
+}
+setInterval(()=>{if(hitCooldown>0)hitCooldown--;},16);
+function collide(a,b){return a.x<b.x+b.w-10&&a.x+a.w-10>b.x&&a.y<b.y+b.h-10&&a.y+a.h-10>b.y;}
+function draw(){
+  const W=canvas.width, H=canvas.height, gnd=GROUND();
+  ctx.clearRect(0,0,W,H);
+  const grad=ctx.createLinearGradient(0,0,0,H);
+  grad.addColorStop(0,'#1a1a4e'); grad.addColorStop(1,'#2a4a1a');
+  ctx.fillStyle=grad; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#ffffff22';
+  for(let i=0;i<6;i++){const sx=((i*200-bgOffset*0.3)%W+W)%W;ctx.fillRect(sx,H*0.08+i%2*30,80,12);}
+  ctx.fillStyle='#3a5a20'; ctx.fillRect(0,gnd+10,W,H-gnd);
+  ctx.strokeStyle='#5a8a30'; ctx.lineWidth=4;
+  ctx.beginPath(); ctx.moveTo(0,gnd+10); ctx.lineTo(W,gnd+10); ctx.stroke();
+  ctx.font=`${player.w}px serif`;
+  ctx.textAlign='center'; ctx.textBaseline='bottom';
+  if(hitCooldown>0&&Math.floor(hitCooldown/6)%2===0){ctx.globalAlpha=0.4;}
+  ctx.fillText(player.animal, player.x+player.w/2, player.y+player.h);
+  ctx.globalAlpha=1;
+  obstacles.forEach(o=>{ctx.font=`${o.h}px serif`;ctx.fillText(o.emoji,o.x+o.w/2,o.y+o.h);});
+  coins.forEach(c=>{ctx.font=`${c.w}px serif`;ctx.fillText(c.emoji,c.x+c.w/2,c.y+c.h);});
+}
+async function endGame(){
+  running=false; cancelAnimationFrame(animId);
+  document.getElementById('hud').style.display='none';
+  document.getElementById('finalScore').textContent=score+'점';
+  document.getElementById('overScreen').style.display='flex';
+  await SB.from('scores').insert({game_date:'2026-05-17',nickname,score});
+  const {data}=await SB.from('scores').select('nickname,score').eq('game_date','2026-05-17').order('score',{ascending:false}).limit(5);
+  const rl=document.getElementById('rankList'); rl.innerHTML='';
+  (data||[]).forEach((r,i)=>{const d=document.createElement('div');d.className='rank-row';d.innerHTML=`<span>${['🥇','🥈','🥉','4️⃣','5️⃣'][i]} ${r.nickname}</span><span>${r.score}점</span>`;rl.appendChild(d);});
+}
+</script>
+</body>
+</html>
