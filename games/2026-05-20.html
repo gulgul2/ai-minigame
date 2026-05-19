@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>음식 퀴즈 게임</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#1a1a2e;font-family:'Arial',sans-serif;overflow:hidden;}
+canvas{position:fixed;top:0;left:0;z-index:1;width:100%;height:100%;}
+#nickScreen,#overScreen{position:fixed;z-index:10;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#1a1a2e,#16213e,#0f3460);}
+h1{color:#e94560;font-size:2em;margin-bottom:10px;text-shadow:0 0 20px #e94560;}
+.sub{color:#a8dadc;font-size:1em;margin-bottom:30px;}
+.nick-btns{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;margin-bottom:25px;}
+.nick-btn{padding:12px 22px;border:2px solid #e94560;background:transparent;color:#fff;border-radius:25px;font-size:1em;cursor:pointer;transition:all 0.3s;}
+.nick-btn.active,.nick-btn:hover{background:#e94560;color:#fff;}
+#startBtn{padding:14px 40px;background:#e94560;color:#fff;border:none;border-radius:30px;font-size:1.1em;cursor:pointer;letter-spacing:2px;box-shadow:0 4px 20px rgba(233,69,96,0.5);}
+#startBtn:hover{background:#c73652;}
+.score-display{color:#ffd700;font-size:3em;font-weight:bold;margin:15px 0;}
+.lb{background:rgba(255,255,255,0.1);border-radius:15px;padding:20px;min-width:260px;margin:15px 0;}
+.lb h3{color:#a8dadc;text-align:center;margin-bottom:12px;font-size:1em;}
+.lb-row{display:flex;justify-content:space-between;color:#fff;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.1);font-size:0.95em;}
+.lb-row:last-child{border-bottom:none;}
+#replayBtn{padding:12px 35px;background:#0f3460;color:#a8dadc;border:2px solid #a8dadc;border-radius:25px;font-size:1em;cursor:pointer;margin-top:10px;}
+#replayBtn:hover{background:#a8dadc;color:#1a1a2e;}
+#hidden{display:none;}
+</style>
+</head>
+<body>
+<div id="nickScreen">
+  <h1>🍔 음식 퀴즈</h1>
+  <p class="sub">닉네임을 선택하세요</p>
+  <div class="nick-btns">
+    <button class="nick-btn" onclick="selectNick(this,'태형')">태형</button>
+    <button class="nick-btn" onclick="selectNick(this,'상이')">상이</button>
+    <button class="nick-btn" onclick="selectNick(this,'세준')">세준</button>
+    <button class="nick-btn" onclick="selectNick(this,'영근')">영근</button>
+  </div>
+  <button id="startBtn" onclick="startGame()">START</button>
+</div>
+<canvas id="c"></canvas>
+<div id="overScreen" style="display:none;">
+  <h1>게임 종료!</h1>
+  <div class="score-display" id="finalScore">0점</div>
+  <div class="lb"><h3>🏆 리더보드 (2026-05-20)</h3><div id="lbList"></div></div>
+  <button id="replayBtn" onclick="location.reload()">다시하기</button>
+</div>
+<div id="hidden"></div>
+<script>
+const SB=window.supabase.createClient('https://zypthfexxjcsguycjggr.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5cHRoZmV4eGpjc2d1eWNqZ2dyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3Njc2NzksImV4cCI6MjA5MjM0MzY3OX0.HaC4ltXQrO7_BQCeLqBVtvCBs4wL3Hzy6Ow_mO24vs0');
+const QUIZZES=[
+  {q:"🍕 피자의 발원지는?",a:["이탈리아","미국","프랑스","스페인"],c:0},
+  {q:"🍣 스시에 쓰이는 생선이 아닌것?",a:["연어","참치","대구","오징어"],c:2},
+  {q:"🍜 라멘의 국물 종류가 아닌것?",a:["돈코츠","미소","간장","된장"],c:3},
+  {q:"🧀 치즈의 원료는?",a:["우유","콩","쌀","밀"],c:0},
+  {q:"🍦 아이스크림의 주재료?",a:["크림","물","식초","기름"],c:0},
+  {q:"🥐 크루아상의 원산지는?",a:["프랑스","독일","영국","오스트리아"],c:3},
+  {q:"🍩 도넛의 구멍이 뚫린 이유?",a:["익히기 위해","장식","전통","무게"],c:0},
+  {q:"🥩 스테이크 웰던이란?",a:["완전익힘","반익힘","날것","훈제"],c:0},
+  {q:"🍜 파스타의 주재료는?",a:["밀가루","쌀","감자","옥수수"],c:0},
+  {q:"🌮 타코의 원산지는?",a:["멕시코","스페인","미국","브라질"],c:0},
+  {q:"🍱 도시락을 뜻하는 일본어?",a:["벤또","오니기리","라멘","스시"],c:0},
+  {q:"🥗 시저샐러드의 핵심재료?",a:["로메인","시금치","케일","아이스버그"],c:0},
+  {q:"🫕 카레의 주요 향신료?",a:["강황","파프리카","계피","고수"],c:0},
+  {q:"🍫 초콜릿의 주원료?",a:["카카오","커피","바닐라","설탕"],c:0},
+  {q:"🥟 교자와 비슷한 한국 음식?",a:["만두","전","떡","죽"],c:0},
+];
+let nickname='',score=0,curQ=0,timeLeft=15,timerID,gameActive=false;
+let cx,cy,W,H,answerResult=null,resTimer=0;
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+function resize(){W=canvas.width=window.innerWidth;H=canvas.height=window.innerHeight;cx=W/2;cy=H/2;}
+resize();window.addEventListener('resize',resize);
+function selectNick(el,name){document.querySelectorAll('.nick-btn').forEach(b=>b.classList.remove('active'));el.classList.add('active');nickname=name;}
+function startGame(){if(!nickname){alert('닉네임을 선택하세요!');return;}document.getElementById('nickScreen').style.display='none';gameActive=true;score=0;curQ=0;shuffleQuiz();nextQuestion();gameLoop();}
+function shuffleQuiz(){for(let i=QUIZZES.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[QUIZZES[i],QUIZZES[j]]=[QUIZZES[j],QUIZZES[i]];}}
+function nextQuestion(){if(curQ>=QUIZZES.length){endGame();return;}timeLeft=15;answerResult=null;clearInterval(timerID);timerID=setInterval(()=>{timeLeft--;if(timeLeft<=0){clearInterval(timerID);answerResult='timeout';resTimer=60;setTimeout(()=>{curQ++;nextQuestion();},1500);}},1000);}
+function answer(idx){if(answerResult)return;clearInterval(timerID);const correct=QUIZZES[curQ].c===idx;answerResult=correct?'correct':'wrong';if(correct)score+=Math.max(10,timeLeft*10);resTimer=60;setTimeout(()=>{curQ++;nextQuestion();},1200);}
+async function endGame(){gameActive=false;clearInterval(timerID);document.getElementById('overScreen').style.display='flex';document.getElementById('finalScore').textContent=score+'점';await SB.from('scores').insert({game_date:'2026-05-20',nickname,score});const{data}=await SB.from('scores').select('nickname,score').eq('game_date','2026-05-20').order('score',{ascending:false}).limit(5);const lb=document.getElementById('lbList');lb.innerHTML='';if(data)data.forEach((r,i)=>{lb.innerHTML+=`<div class="lb-row"><span>${['🥇','🥈','🥉','4️⃣','5️⃣'][i]} ${r.nickname}</span><span>${r.score}점</span></div>`;});}
+function getAnswerBoxes(){const q=QUIZZES[curQ];const bw=Math.min(W*0.42,200),bh=60,gap=14;const sx=cx-bw-gap/2,sx2=cx+gap/2,sy=cy+60,sy2=cy+60+bh+gap;return q.a.map((t,i)=>({x:i%2===0?sx:sx2,y:i<2?sy:sy2,w:bw,h:bh,text:t,idx:i}));}
+function drawGame(){ctx.clearRect(0,0,W,H);ctx.fillStyle='#1a1a2e';ctx.fillRect(0,0,W,H);if(!gameActive||curQ>=QUIZZES.length)return;const q=QUIZZES[curQ];
+// HUD
+ctx.fillStyle='#e94560';ctx.font='bold 18px Arial';ctx.textAlign='left';ctx.fillText('점수: '+score,20,35);ctx.fillStyle='#a8dadc';ctx.textAlign='right';ctx.fillText(nickname,W-20,35);
+// Timer bar
+const tw=(timeLeft/15)*W;ctx.fillStyle='rgba(255,255,255,0.15)';ctx.fillRect(0,50,W,8);ctx.fillStyle=timeLeft>7?'#4ecca3':timeLeft>3?'#ffd700':'#e94560';ctx.fillRect(0,50,tw,8);ctx.fillStyle='#fff';ctx.textAlign='center';ctx.font='bold 14px Arial';ctx.fillText(timeLeft+'s',cx,48);
+// Progress
+ctx.fillStyle='rgba(168,218,220,0.6)';ctx.font='13px Arial';ctx.textAlign='center';ctx.fillText((curQ+1)+'/'+QUIZZES.length,cx,75);
+// Question box
+ctx.fillStyle='rgba(255,255,255,0.08)';roundRect(ctx,20,90,W-40,Math.min(150,H*0.22),15);ctx.fillStyle='#fff';ctx.font='bold 20px Arial';ctx.textAlign='center';wrapText(ctx,q.q,cx,135,W-60,28);
+// Answer boxes
+const boxes=getAnswerBoxes();
+const colors=['#e94560','#0f3460','#4ecca3','#f9a826'];
+boxes.forEach(b=>{let col=colors[b.idx];if(answerResult){if(b.idx===q.c)col='#4ecca3';else if(answerResult==='wrong'&&b.idx!==q.c)col='#e94560';}ctx.fillStyle=col+'cc';roundRect(ctx,b.x,b.y,b.w,b.h,12);ctx.strokeStyle='rgba(255,255,255,0.3)';ctx.lineWidth=1.5;roundRect(ctx,b.x,b.y,b.w,b.h,12,true);ctx.fillStyle='#fff';ctx.font='bold 15px Arial';ctx.textAlign='center';ctx.textBaseline='middle';wrapText(ctx,b.text,b.x+b.w/2,b.y+b.h/2,b.w-16,18);ctx.textBaseline='alphabetic';});
+// Result flash
+if(answerResult&&answerResult!=='timeout'){ctx.fillStyle=answerResult==='correct'?'rgba(78,204,163,0.85)':'rgba(233,69,96,0.85)';roundRect(ctx,cx-80,cy-40,160,44,12);ctx.fillStyle='#fff';ctx.font='bold 20px Arial';ctx.textAlign='center';ctx.fillText(answerResult==='correct'?'✅ 정답!':'❌ 오답!',cx,cy-12);}
+if(answerResult==='timeout'){ctx.fillStyle='rgba(249,168,38,0.85)';roundRect(ctx,cx-80,cy-40,160,44,12);ctx.fillStyle='#fff';ctx.font='bold 18px Arial';ctx.textAlign='center';ctx.fillText('⏰ 시간초과!',cx,cy-12);}}
+function roundRect(ctx,x,y,w,h,r,stroke=false){ctx.beginPath();ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);ctx.quadraticCurveTo(x+w,y,x+w,y+r);ctx.lineTo(x+w,y+h-r);ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);ctx.lineTo(x+r,y+h);ctx.quadraticCurveTo(x,y+h,x,y+h-r);ctx.lineTo(x,y+r);ctx.quadraticCurveTo(x,y,x+r,y);ctx.closePath();if(stroke)ctx.stroke();else ctx.fill();}
+function wrapText(ctx,text,x,y,maxW,lh){const words=text.split(' ');let line='';const lines=[];words.forEach(w=>{const test=line+w+' ';if(ctx.measureText(test).width>maxW&&line!==''){lines.push(line.trim());line=w+' ';}else line=test;});lines.push(line.trim());const startY=y-(lines.length-1)*lh/2;lines.forEach((l,i)=>ctx.fillText(l,x,startY+i*lh));}
+function gameLoop(){if(!gameActive)return;drawGame();requestAnimationFrame(gameLoop);}
+function getTouchPos(e){const r=canvas.getBoundingClientRect();const scaleX=W/r.width,scaleY=H/r.height;const t=e.touches?e.touches[0]:e;return{x:(t.clientX-r.left)*scaleX,y:(t.clientY-r.top)*scaleY};}
+function handleInput(pos){if(!gameActive||answerResult||curQ>=QUIZZES.length)return;const boxes=getAnswerBoxes();boxes.forEach(b=>{if(pos.x>=b.x&&pos.x<=b.x+b.w&&pos.y>=b.y&&pos.y<=b.y+b.h)answer(b.idx);});}
+canvas.addEventListener('touchstart',e=>{e.preventDefault();handleInput(getTouchPos(e));},{passive:false});
+canvas.addEventListener('touchmove',e=>{e.preventDefault();},{passive:false});
+canvas.addEventListener('touchend',e=>{e.preventDefault();},{passive:false});
+canvas.addEventListener('mousedown',e=>handleInput(getTouchPos(e)));
+canvas.addEventListener('mousemove',()=>{});
+canvas.addEventListener('mouseup',()=>{});
+</script>
+</body>
+</html>
