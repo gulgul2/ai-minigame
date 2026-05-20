@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>스포츠 퀴즈</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#1a1a2e;font-family:'Arial',sans-serif;overflow:hidden}
+canvas{position:fixed;top:0;left:0;z-index:1;width:100%;height:100%}
+#nickScreen,#overScreen{position:fixed;z-index:10;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#1a1a2e,#16213e,#0f3460)}
+h1{color:#e94560;font-size:2rem;margin-bottom:10px;text-shadow:0 0 20px #e94560}
+.sub{color:#a8dadc;font-size:1rem;margin-bottom:30px}
+.nick-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:24px}
+.nick-btn{padding:14px 28px;border:2px solid #457b9d;background:transparent;color:#a8dadc;font-size:1.1rem;border-radius:12px;cursor:pointer;transition:all .3s}
+.nick-btn.selected,.nick-btn:hover{background:#e94560;border-color:#e94560;color:#fff;transform:scale(1.05)}
+.start-btn{padding:16px 48px;background:#e94560;border:none;color:#fff;font-size:1.3rem;border-radius:16px;cursor:pointer;box-shadow:0 4px 20px rgba(233,69,96,.5);transition:transform .2s}
+.start-btn:hover{transform:scale(1.05)}
+#overScreen h2{color:#ffd700;font-size:1.8rem;margin-bottom:8px}
+#finalScore{color:#fff;font-size:1.4rem;margin-bottom:20px}
+#leaderboard{background:rgba(255,255,255,.08);border-radius:16px;padding:16px 24px;min-width:240px;margin-bottom:20px}
+#leaderboard h3{color:#a8dadc;margin-bottom:10px;text-align:center}
+.lb-row{color:#fff;font-size:1rem;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.1);display:flex;justify-content:space-between}
+.lb-row:last-child{border:none}
+</style>
+</head>
+<body>
+<div id="nickScreen">
+  <h1>🏆 스포츠 퀴즈</h1>
+  <p class="sub">2026-05-21</p>
+  <div class="nick-grid">
+    <button class="nick-btn" onclick="selectNick(this,'태형')">태형</button>
+    <button class="nick-btn" onclick="selectNick(this,'상이')">상이</button>
+    <button class="nick-btn" onclick="selectNick(this,'세준')">세준</button>
+    <button class="nick-btn" onclick="selectNick(this,'영근')">영근</button>
+  </div>
+  <button class="start-btn" onclick="startGame()">START</button>
+</div>
+<canvas id="c"></canvas>
+<div id="overScreen" style="display:none">
+  <h2>게임 종료!</h2>
+  <div id="finalScore"></div>
+  <div id="leaderboard"><h3>🏅 리더보드</h3><div id="lbList"></div></div>
+  <button class="start-btn" onclick="restart()">다시하기</button>
+</div>
+<script>
+const SB=window.supabase.createClient('https://zypthfexxjcsguycjggr.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5cHRoZmV4eGpjc2d1eWNqZ2dyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3Njc2NzksImV4cCI6MjA5MjM0MzY3OX0.HaC4ltXQrO7_BQCeLqBVtvCBs4wl3Hzy6Ow_mO24vs0');
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+let nickname='',score=0,timeLeft=30,gameActive=false,currentQ=null,qTimer=0,answered=false,feedbackMsg='',feedbackAlpha=0;
+const QUESTIONS=[
+  {q:'올림픽 5륜기의 색 수는?',a:['5','6','4','3'],c:0},
+  {q:'축구 월드컵 주기는?',a:['4년','2년','3년','5년'],c:0},
+  {q:'수영 기본 영법이 아닌 것은?',a:['독수리','자유형','접영','배영'],c:0},
+  {q:'테니스 그랜드슬램 대회 수는?',a:['4','3','5','6'],c:0},
+  {q:'농구 한 팀 선수 수는?',a:['5명','6명','4명','7명'],c:0},
+  {q:'마라톤 공식 거리는?',a:['42.195km','40km','45km','43km'],c:0},
+  {q:'배구 세트당 목표 득점은?',a:['25점','21점','30점','15점'],c:0},
+  {q:'야구 이닝 수는?',a:['9','7','8','10'],c:0},
+  {q:'골프에서 파보다 2타 적은 것은?',a:['이글','버디','알바트로스','홀인원'],c:0},
+  {q:'2024 파리올림픽 개최 국가는?',a:['프랑스','이탈리아','독일','스페인'],c:0},
+  {q:'럭비 한 팀 선수 수는?',a:['15명','11명','13명','9명'],c:0},
+  {q:'탁구 공의 지름(mm)은?',a:['40mm','38mm','42mm','36mm'],c:0},
+  {q:'배드민턴 셔틀콕의 깃털 수는?',a:['16개','12개','14개','18개'],c:0},
+  {q:'수영 올림픽 최장 거리는?',a:['1500m','800m','1000m','2000m'],c:0},
+  {q:'NFL은 어느 나라 리그?',a:['미국','캐나다','영국','호주'],c:0},
+];
+let shuffled=[],qIdx=0;
+function resize(){canvas.width=window.innerWidth;canvas.height=window.innerHeight}
+window.addEventListener('resize',resize);resize();
+function selectNick(el,n){document.querySelectorAll('.nick-btn').forEach(b=>b.classList.remove('selected'));el.classList.add('selected');nickname=n}
+function startGame(){
+  if(!nickname)return alert('닉네임을 선택해주세요!');
+  document.getElementById('nickScreen').style.display='none';
+  shuffled=[...QUESTIONS].sort(()=>Math.random()-.5);
+  qIdx=0;score=0;timeLeft=30;gameActive=true;answered=false;feedbackAlpha=0;
+  nextQuestion();requestAnimationFrame(loop);
+}
+function nextQuestion(){
+  if(qIdx>=shuffled.length)qIdx=0;
+  currentQ=shuffled[qIdx++];
+  currentQ.opts=[...currentQ.a].sort(()=>Math.random()-.5);
+  currentQ.correctOpt=currentQ.a[0];
+  qTimer=10;answered=false;
+}
+let last=0;
+function loop(ts){
+  if(!gameActive)return;
+  const dt=(ts-last)/1000;last=ts;
+  timeLeft-=dt;qTimer-=dt;
+  if(feedbackAlpha>0)feedbackAlpha-=dt*2;
+  if(qTimer<=0&&!answered){feedbackMsg='⏰ 시간초과!';feedbackAlpha=1.5;setTimeout(()=>{nextQuestion()},800)}
+  if(timeLeft<=0){endGame();return}
+  draw();requestAnimationFrame(loop);
+}
+function draw(){
+  const W=canvas.width,H=canvas.height;
+  ctx.fillStyle='#1a1a2e';ctx.fillRect(0,0,W,H);
+  // HUD
+  ctx.fillStyle='#e94560';ctx.fillRect(0,0,W,56);
+  ctx.fillStyle='#fff';ctx.font='bold 18px Arial';ctx.textAlign='left';ctx.fillText('🏆 '+nickname,12,36);
+  ctx.textAlign='center';ctx.fillText('점수: '+score,W/2,36);
+  ctx.textAlign='right';ctx.fillText('⏱ '+Math.ceil(timeLeft)+'s',W-12,36);
+  // Timer bar
+  const pct=Math.max(0,qTimer/10);
+  ctx.fillStyle='rgba(255,255,255,.15)';ctx.fillRect(0,56,W,8);
+  ctx.fillStyle=pct>.5?'#2ecc71':pct>.25?'#f39c12':'#e74c3c';ctx.fillRect(0,56,W*pct,8);
+  if(!currentQ)return;
+  // Question
+  const qY=H*.22;ctx.fillStyle='rgba(255,255,255,.06)';roundRect(W*.05,qY-28,W*.9,90,16);
+  ctx.fillStyle='#a8dadc';ctx.font='bold 17px Arial';ctx.textAlign='center';
+  wrapText(currentQ.q,W/2,qY+8,W*.82,26);
+  // Options
+  const opts=currentQ.opts,cols=2,rows=2,bw=W*.42,bh=H*.1,gx=W*.05,gy=H*.42,gap=W*.04;
+  opts.forEach((o,i)=>{
+    const col=i%cols,row=Math.floor(i/cols);
+    const x=gx+col*(bw+gap),y=gy+row*(bh+H*.025);
+    let bg='rgba(69,123,157,.35)',border='#457b9d',tc='#fff';
+    if(answered){
+      if(o===currentQ.correctOpt){bg='rgba(46,204,113,.5)';border='#2ecc71'}
+      else{bg='rgba(231,76,60,.3)';border='#e74c3c'}
+    }
+    ctx.fillStyle=bg;roundRect(x,y,bw,bh,14);
+    ctx.strokeStyle=border;ctx.lineWidth=2;roundRectStroke(x,y,bw,bh,14);
+    ctx.fillStyle=tc;ctx.font='bold 15px Arial';ctx.textAlign='center';
+    wrapText(o,x+bw/2,y+bh/2+6,bw-.2,20);
+  });
+  // Feedback
+  if(feedbackAlpha>0){
+    ctx.save();ctx.globalAlpha=Math.min(1,feedbackAlpha);
+    ctx.fillStyle='#ffd700';ctx.font='bold 26px Arial';ctx.textAlign='center';
+    ctx.fillText(feedbackMsg,W/2,H*.82);ctx.restore();
+  }
+  ctx.fillStyle='rgba(168,218,220,.5)';ctx.font='14px Arial';ctx.textAlign='center';
+  ctx.fillText('Q'+qIdx+' / '+shuffled.length,W/2,H*.38);
+}
+function roundRect(x,y,w,h,r){ctx.beginPath();ctx.roundRect(x,y,w,h,r);ctx.fill()}
+function roundRectStroke(x,y,w,h,r){ctx.beginPath();ctx.roundRect(x,y,w,h,r);ctx.stroke()}
+function wrapText(text,cx,cy,maxW,lh){
+  const words=text.split(' ');let line='',lines=[];
+  words.forEach(w=>{const t=line+w+' ';if(ctx.measureText(t).width>maxW&&line){lines.push(line.trim());line=w+' ';}else line=t;});
+  lines.push(line.trim());
+  const startY=cy-(lines.length-1)*lh/2;
+  lines.forEach((l,i)=>ctx.fillText(l,cx,startY+i*lh));
+}
+function handleTap(px,py){
+  if(!gameActive||!currentQ||answered)return;
+  const W=canvas.width,H=canvas.height;
+  const opts=currentQ.opts,cols=2,bw=W*.42,bh=H*.1,gx=W*.05,gy=H*.42,gap=W*.04;
+  opts.forEach((o,i)=>{
+    const col=i%cols,row=Math.floor(i/cols);
+    const x=gx+col*(bw+gap),y=gy+row*(bh+H*.025);
+    if(px>=x&&px<=x+bw&&py>=y&&py<=y+bh){
+      answered=true;
+      if(o===currentQ.correctOpt){score+=Math.ceil(qTimer*10);feedbackMsg='✅ 정답!';feedbackAlpha=1.5;}
+      else{feedbackMsg='❌ 오답!';feedbackAlpha=1.5;}
+      setTimeout(()=>{nextQuestion()},900);
+    }
+  });
+}
+canvas.addEventListener('mousedown',e=>handleTap(e.offsetX,e.offsetY));
+canvas.addEventListener('mousemove',()=>{});
+canvas.addEventListener('mouseup',()=>{});
+canvas.addEventListener('touchstart',e=>{e.preventDefault();const t=e.touches[0];const r=canvas.getBoundingClientRect();handleTap(t.clientX-r.left,t.clientY-r.top);},{passive:false});
+canvas.addEventListener('touchmove',e=>e.preventDefault(),{passive:false});
+canvas.addEventListener('touchend',()=>{},{passive:false});
+async function endGame(){
+  gameActive=false;
+  document.getElementById('finalScore').textContent='최종 점수: '+score+'점';
+  document.getElementById('overScreen').style.display='flex';
+  await SB.from('scores').insert({game_date:'2026-05-21',nickname,score});
+  const {data}=await SB.from('scores').select('nickname,score').eq('game_date','2026-05-21').order('score',{ascending:false}).limit(5);
+  const lb=document.getElementById('lbList');lb.innerHTML='';
+  (data||[]).forEach((r,i)=>{
+    const d=document.createElement('div');d.className='lb-row';
+    d.innerHTML=`<span>${['🥇','🥈','🥉','4️⃣','5️⃣'][i]} ${r.nickname}</span><span>${r.score}점</span>`;
+    lb.appendChild(d);
+  });
+}
+function restart(){document.getElementById('overScreen').style.display='none';document.getElementById('nickScreen').style.display='flex';nickname='';document.querySelectorAll('.nick-btn').forEach(b=>b.classList.remove('selected'));}
+</script>
+</body>
+</html>
