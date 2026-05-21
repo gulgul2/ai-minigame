@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>복고 낚시</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#000;font-family:'Courier New',monospace;overflow:hidden}
+canvas{position:fixed;top:0;left:0;z-index:1;width:100%;height:100%}
+#nickScreen,#overScreen{position:fixed;z-index:10;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#000}
+.title{color:#0f0;font-size:2em;text-shadow:0 0 10px #0f0;margin-bottom:30px;letter-spacing:4px}
+.subtitle{color:#0a0;font-size:.8em;margin-bottom:40px;letter-spacing:2px}
+.nick-btn{background:#000;color:#0f0;border:2px solid #0f0;padding:12px 28px;margin:8px;font-size:1.1em;font-family:'Courier New',monospace;cursor:pointer;letter-spacing:2px;transition:all .2s}
+.nick-btn.selected,.nick-btn:hover{background:#0f0;color:#000}
+#startBtn{background:#000;color:#ff0;border:2px solid #ff0;padding:14px 40px;margin-top:20px;font-size:1.3em;font-family:'Courier New',monospace;cursor:pointer;letter-spacing:4px}
+#startBtn:hover{background:#ff0;color:#000}
+#hud{position:fixed;z-index:5;top:10px;left:10px;color:#0f0;font-size:1em;font-family:'Courier New',monospace;text-shadow:0 0 6px #0f0;pointer-events:none}
+.over-title{color:#f00;font-size:2em;text-shadow:0 0 10px #f00;margin-bottom:20px;letter-spacing:4px}
+.score-txt{color:#ff0;font-size:1.4em;margin-bottom:20px;letter-spacing:2px}
+.lb-title{color:#0f0;font-size:.9em;margin-bottom:10px;letter-spacing:2px}
+.lb-item{color:#0ff;font-size:.85em;margin:4px 0;letter-spacing:1px}
+#retryBtn{background:#000;color:#0f0;border:2px solid #0f0;padding:12px 36px;margin-top:24px;font-size:1.1em;font-family:'Courier New',monospace;cursor:pointer;letter-spacing:3px}
+#retryBtn:hover{background:#0f0;color:#000}
+#overScreen{display:none}
+</style>
+</head>
+<body>
+<div id="nickScreen">
+  <div class="title">★ RETRO FISHING ★</div>
+  <div class="subtitle">2026-05-22</div>
+  <div id="nickBtns">
+    <button class="nick-btn" onclick="selectNick(this,'태형')">태형</button>
+    <button class="nick-btn" onclick="selectNick(this,'상이')">상이</button>
+    <button class="nick-btn" onclick="selectNick(this,'세준')">세준</button>
+    <button class="nick-btn" onclick="selectNick(this,'영근')">영근</button>
+  </div>
+  <button id="startBtn" onclick="startGame()">▶ START</button>
+</div>
+<canvas id="c"></canvas>
+<div id="hud">SCORE: <span id="scoreVal">0</span></div>
+<div id="overScreen">
+  <div class="over-title">GAME OVER</div>
+  <div class="score-txt">SCORE: <span id="finalScore">0</span></div>
+  <div class="lb-title">★ RANKING ★</div>
+  <div id="lb"></div>
+  <button id="retryBtn" onclick="location.reload()">▶ RETRY</button>
+</div>
+<script>
+const SB=window.supabase.createClient('https://zypthfexxjcsguycjggr.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5cHRoZmV4eGpjc2d1eWNqZ2dyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3Njc2NzksImV4cCI6MjA5MjM0MzY3OX0.HaC4ltXQrO7_BQCeLqBVtvCBs4wL3Hzy6Ow_mO24vs0');
+const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+let nick='',score=0,running=false,animId;
+let rod={x:0,y:0},line={active:false,x:0,y:0,vy:4,out:false},bobber={x:0,y:0,waiting:false,waitTimer:0,biteTimer:0,biting:false};
+let fishes=[],bubbles=[],catchAnim=null,time=0,W,H,waterY;
+let dragging=false,dragStartX=0;
+
+function selectNick(el,n){document.querySelectorAll('.nick-btn').forEach(b=>b.classList.remove('selected'));el.classList.add('selected');nick=n;}
+function startGame(){if(!nick)return;document.getElementById('nickScreen').style.display='none';document.getElementById('hud').style.display='block';init();running=true;loop();}
+
+function resize(){W=cv.width=cv.offsetWidth;H=cv.height=cv.offsetHeight;waterY=H*0.45;rod.x=W*0.5;rod.y=waterY-80;}
+window.addEventListener('resize',()=>{resize();});
+
+function init(){resize();score=0;fishes=[];bubbles=[];line.active=false;line.out=false;bobber.waiting=false;bobber.biting=false;catchAnim=null;spawnFish();for(let i=0;i<15;i++)addBubble();}
+
+function spawnFish(){for(let i=0;i<6;i++)fishes.push(newFish());}
+function newFish(){const y=waterY+40+Math.random()*(H-waterY-60);return{x:Math.random()<.5?-40:W+40,y,vy:(Math.random()-.5)*.5,speed:(1+Math.random()*2)*(Math.random()<.5?1:-1),type:Math.floor(Math.random()*3),size:18+Math.random()*18,hooked:false};}
+function addBubble(){bubbles.push({x:waterY+20+Math.random()*(H-waterY-40),y:waterY+20+Math.random()*(H-waterY-60),r:2+Math.random()*4,speed:.3+Math.random()*.5,alpha:1});}
+
+function cast(tx,ty){if(line.out||line.active)return;line.active=true;line.out=false;line.x=rod.x;line.y=rod.y;const dx=tx-rod.x,dy=ty-rod.y,dist=Math.sqrt(dx*dx+dy*dy);line.vx=dx/dist*7;line.vy=dy/dist*7;bobber.waiting=false;bobber.biting=false;}
+
+function reel(){if(!line.out&&!line.active)return;if(bobber.biting){addScore(bobber.biteVal);catchAnim={x:bobber.x,y:bobber.y,t:40,val:bobber.biteVal};}line.active=false;line.out=false;bobber.waiting=false;bobber.biting=false;}
+
+function addScore(v){score+=v;document.getElementById('scoreVal').textContent=score;}
+
+function update(){time++;
+fishes.forEach(f=>{if(f.hooked)return;f.x+=f.speed;f.y+=f.vy;if(f.y<waterY+20)f.vy+=.05;if(f.y>H-20)f.vy-=.05;if(f.x>W+60)f.x=-40;if(f.x<-60)f.x=W+40;});
+bubbles.forEach(b=>{b.x-=b.speed;if(b.x<waterY)b.x=waterY+Math.random()*(H-waterY-40);});
+if(line.active&&!line.out){line.x+=line.vx;line.y+=line.vy;line.vy+=.15;if(line.y>=waterY){line.out=true;bobber.x=line.x;bobber.y=waterY+5;bobber.waiting=true;bobber.waitTimer=80+Math.random()*120;bobber.biting=false;line.active=false;}}
+if(bobber.waiting){bobber.waitTimer--;if(bobber.waitTimer<=0){const near=fishes.find(f=>!f.hooked&&Math.abs(f.x-bobber.x)<60&&f.y>waterY);if(near){bobber.biting=true;bobber.biteVal=Math.floor(near.size*5+10);bobber.biteTimer=60;}else{line.out=false;bobber.waiting=false;}}}
+if(bobber.biting){bobber.biteTimer--;if(bobber.biteTimer<=0){bobber.biting=false;line.out=false;bobber.waiting=false;}}
+if(catchAnim){catchAnim.t--;if(catchAnim.t<=0)catchAnim=null;}}
+
+function draw(){ctx.clearRect(0,0,W,H);
+// sky bg
+const sky=ctx.createLinearGradient(0,0,0,waterY);sky.addColorStop(0,'#000033');sky.addColorStop(1,'#001a66');ctx.fillStyle=sky;ctx.fillRect(0,0,W,waterY);
+// stars
+ctx.fillStyle='#fff';for(let i=0;i<40;i++){const sx=(i*137)%W,sy=(i*97)%waterY;ctx.fillRect(sx,sy,1.5,1.5);}
+// water
+const wg=ctx.createLinearGradient(0,waterY,0,H);wg.addColorStop(0,'#003366');wg.addColorStop(1,'#001133');ctx.fillStyle=wg;ctx.fillRect(0,waterY,W,H-waterY);
+// water shimmer
+ctx.strokeStyle='rgba(0,200,255,0.15)';ctx.lineWidth=1;for(let i=0;i<8;i++){ctx.beginPath();ctx.moveTo(0,waterY+20+i*18+Math.sin(time*.04+i)*6);ctx.lineTo(W,waterY+20+i*18+Math.cos(time*.04+i)*6);ctx.stroke();}
+// waterline
+ctx.strokeStyle='#00ffff';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(0,waterY);ctx.lineTo(W,waterY);ctx.stroke();
+// pier
+ctx.fillStyle='#4a2800';ctx.fillRect(rod.x-30,waterY-20,60,20);ctx.fillRect(rod.x-8,waterY-80,16,60);
+// rod
+ctx.strokeStyle='#aa6600';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(rod.x,waterY-80);ctx.lineTo(rod.x+20,waterY-100);ctx.stroke();
+// fishing line
+if(line.active){ctx.strokeStyle='#aaa';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(rod.x+20,waterY-100);ctx.lineTo(line.x,line.y);ctx.stroke();}
+if(line.out){ctx.strokeStyle='#aaa';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(rod.x+20,waterY-100);ctx.lineTo(bobber.x,waterY);ctx.stroke();
+const bob=bobber.biting?Math.sin(time*.3)*5:0;ctx.fillStyle=bobber.biting?'#ff0':'#f00';ctx.beginPath();ctx.arc(bobber.x,waterY+bob,6,0,Math.PI*2);ctx.fill();ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(bobber.x,waterY+bob-3,2,0,Math.PI*2);ctx.fill();}
+// fishes
+fishes.forEach(f=>{if(f.y<waterY+5)return;ctx.save();ctx.translate(f.x,f.y);if(f.speed<0)ctx.scale(-1,1);const fc=['#ff6600','#00ccff','#ffcc00'][f.type];ctx.fillStyle=fc;ctx.beginPath();ctx.ellipse(0,0,f.size,f.size*.5,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#000';ctx.fillRect(f.size*.6,-2,4,4);ctx.fillStyle='#fff';ctx.fillRect(f.size*.65,-1,2,2);ctx.fillStyle=fc;ctx.beginPath();ctx.moveTo(-f.size,0);ctx.lineTo(-f.size-8,-8);ctx.lineTo(-f.size-8,8);ctx.closePath();ctx.fill();ctx.restore();});
+// catch anim
+if(catchAnim){ctx.fillStyle=`rgba(255,255,0,${catchAnim.t/40})`;ctx.font=`bold ${20+catchAnim.t*.3}px 'Courier New'`;ctx.fillText(`+${catchAnim.val}`,catchAnim.x-20,catchAnim.y-catchAnim.t);}
+// HUD bg
+ctx.fillStyle='rgba(0,0,0,.5)';ctx.fillRect(5,5,160,32);}
+
+function loop(){if(!running)return;update();draw();animId=requestAnimationFrame(loop);}
+
+async function endGame(){running=false;cancelAnimationFrame(animId);document.getElementById('hud').style.display='none';document.getElementById('finalScore').textContent=score;document.getElementById('overScreen').style.display='flex';await SB.from('scores').insert({game_date:'2026-05-22',nickname:nick,score});const {data}=await SB.from('scores').select('nickname,score').eq('game_date','2026-05-22').order('score',{ascending:false}).limit(5);const lb=document.getElementById('lb');lb.innerHTML='';(data||[]).forEach((r,i)=>{const d=document.createElement('div');d.className='lb-item';d.textContent=`${i+1}. ${r.nickname}  ${r.score}pt`;lb.appendChild(d);});}
+
+let gameTimer=60,timerInterval;
+function startTimer(){timerInterval=setInterval(()=>{gameTimer--;document.getElementById('scoreVal').textContent=score;if(gameTimer<=0){clearInterval(timerInterval);endGame();}},1000);}
+
+// override startGame
+const _orig=window.startGame;window.startGame=function(){if(!nick)return;document.getElementById('nickScreen').style.display='none';document.getElementById('hud').style.display='block';init();running=true;gameTimer=60;loop();startTimer();};
+
+// input
+function getPos(e){if(e.touches)return{x:e.touches[0].clientX*(cv.width/cv.offsetWidth),y:e.touches[0].clientY*(cv.height/cv.offsetHeight)};return{x:e.clientX*(cv.width/cv.offsetWidth),y:e.clientY*(cv.height/cv.offsetHeight)};}
+cv.addEventListener('mousedown',e=>{if(!running)return;dragging=true;dragStartX=getPos(e).x;});
+cv.addEventListener('mousemove',e=>{});
+cv.addEventListener('mouseup',e=>{if(!running||!dragging)return;dragging=false;const p=getPos(e);if(line.out||bobber.waiting||bobber.biting)reel();else cast(p.x,p.y);});
+cv.addEventListener('touchstart',e=>{e.preventDefault();if(!running)return;dragging=true;dragStartX=getPos(e).x;},{passive:false});
+cv.addEventListener('touchmove',e=>{e.preventDefault();},{passive:false});
+cv.addEventListener('touchend',e=>{e.preventDefault();if(!running||!dragging)return;dragging=false;const t=e.changedTouches[0];const p={x:t.clientX*(cv.width/cv.offsetWidth),y:t.clientY*(cv.height/cv.offsetHeight)};if(line.out||bobber.waiting||bobber.biting)reel();else cast(p.x,p.y);},{passive:false});
+</script>
+</body>
+</html>
