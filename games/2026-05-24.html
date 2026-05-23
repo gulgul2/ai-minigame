@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>음식 생존 게임</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#1a0a00;font-family:'Arial',sans-serif;overflow:hidden;}
+canvas{position:fixed;top:0;left:0;z-index:1;width:100%;height:100%;}
+#nickScreen,#overScreen{position:fixed;z-index:10;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(20,8,0,0.95);}
+h1{color:#ff8c00;font-size:2em;margin-bottom:10px;text-shadow:0 0 20px #ff4500;}
+.sub{color:#ffd700;margin-bottom:30px;font-size:1em;}
+.nickBtns{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-bottom:24px;}
+.nickBtn{padding:12px 22px;border:2px solid #ff8c00;background:transparent;color:#ffd700;font-size:1.1em;border-radius:10px;cursor:pointer;transition:all .2s;}
+.nickBtn.selected,.nickBtn:hover{background:#ff8c00;color:#1a0a00;font-weight:bold;}
+.startBtn,.restartBtn{padding:14px 40px;background:linear-gradient(135deg,#ff4500,#ff8c00);color:#fff;font-size:1.2em;border:none;border-radius:14px;cursor:pointer;font-weight:bold;margin-top:10px;}
+#hud{position:fixed;top:10px;left:0;width:100%;z-index:5;display:flex;justify-content:space-between;padding:0 16px;pointer-events:none;}
+.hud-box{background:rgba(0,0,0,0.6);color:#ffd700;padding:6px 14px;border-radius:8px;font-size:1em;font-weight:bold;}
+#overScreen h2{color:#ff4500;font-size:1.8em;margin-bottom:8px;}
+#finalScore{color:#ffd700;font-size:1.4em;margin-bottom:18px;}
+#board{background:rgba(255,140,0,0.1);border:1px solid #ff8c00;border-radius:10px;padding:14px 24px;min-width:220px;margin-bottom:18px;}
+#board h3{color:#ff8c00;margin-bottom:10px;text-align:center;}
+.boardRow{color:#ffd700;padding:3px 0;font-size:.95em;}
+.boardRow span{float:right;color:#fff;}
+</style>
+</head>
+<body>
+<div id="nickScreen">
+  <h1>🍔 음식 생존</h1>
+  <div class="sub">떨어지는 음식을 받아라!</div>
+  <div class="nickBtns">
+    <button class="nickBtn" onclick="selectNick(this,'태형')">태형</button>
+    <button class="nickBtn" onclick="selectNick(this,'상이')">상이</button>
+    <button class="nickBtn" onclick="selectNick(this,'세준')">세준</button>
+    <button class="nickBtn" onclick="selectNick(this,'영근')">영근</button>
+  </div>
+  <button class="startBtn" onclick="startGame()">START</button>
+</div>
+<canvas id="c"></canvas>
+<div id="hud" style="display:none;">
+  <div class="hud-box" id="scoreLbl">점수: 0</div>
+  <div class="hud-box" id="livesLbl">❤️ 3</div>
+  <div class="hud-box" id="levelLbl">Lv 1</div>
+</div>
+<div id="overScreen" style="display:none;">
+  <h2>💀 게임 오버</h2>
+  <div id="finalScore"></div>
+  <div id="board"><h3>🏆 리더보드</h3><div id="boardRows">로딩중...</div></div>
+  <button class="restartBtn" onclick="location.reload()">다시하기</button>
+</div>
+<script>
+const SB=window.supabase.createClient('https://zypthfexxjcsguycjggr.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5cHRoZmV4eGpjc2d1eWNqZ2dyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3Njc2NzksImV4cCI6MjA5MjM0MzY3OX0.HaC4ltXQrO7_BQCeLqBVtvCBs4wL3Hzy6Ow_mO24vs0');
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+let nickname='',score=0,lives=3,level=1,raf,running=false;
+let player,foods=[],bombs=[],particles=[];
+let spawnT=0,spawnRate=90,frameCount=0;
+const FOODS=['🍕','🍔','🌮','🍣','🍩','🍎','🍇','🥐','🍜','🌽'];
+const BOMBS=['💣','🔥','☠️'];
+function resize(){canvas.width=canvas.offsetWidth;canvas.height=canvas.offsetHeight;if(player)player.y=canvas.height-60;}
+window.addEventListener('resize',resize);
+function selectNick(el,n){document.querySelectorAll('.nickBtn').forEach(b=>b.classList.remove('selected'));el.classList.add('selected');nickname=n;}
+function startGame(){if(!nickname){alert('닉네임을 선택하세요!');return;}document.getElementById('nickScreen').style.display='none';document.getElementById('hud').style.display='flex';resize();initGame();running=true;raf=requestAnimationFrame(loop);}
+function initGame(){score=0;lives=3;level=1;foods=[];bombs=[];particles=[];spawnT=0;spawnRate=90;frameCount=0;player={x:canvas.width/2,y:canvas.height-60,w:54,h:54,tx:canvas.width/2,emoji:'🧑‍🍳'};}
+function updateHUD(){document.getElementById('scoreLbl').textContent='점수: '+score;document.getElementById('livesLbl').textContent='❤️ '+lives;document.getElementById('levelLbl').textContent='Lv '+level;}
+function spawnFood(){const x=40+Math.random()*(canvas.width-80);const isBomb=Math.random()<(0.18+level*0.02);if(isBomb){bombs.push({x,y:-30,vy:2+Math.random()*1.5+level*0.3,emoji:BOMBS[Math.floor(Math.random()*BOMBS.length)],size:36});}else{foods.push({x,y:-30,vy:1.5+Math.random()*1.5+level*0.25,emoji:FOODS[Math.floor(Math.random()*FOODS.length)],size:36,pts:10+level*5});}}
+function addParticles(x,y,color){for(let i=0;i<8;i++)particles.push({x,y,vx:(Math.random()-0.5)*5,vy:-Math.random()*5-2,alpha:1,color,r:Math.random()*6+3});}
+function loop(){ctx.clearRect(0,0,canvas.width,canvas.height);drawBg();frameCount++;spawnT++;if(spawnT>spawnRate){spawnFood();spawnT=0;spawnRate=Math.max(30,90-level*8);}if(frameCount%600===0){level++;} 
+player.x+=(player.tx-player.x)*0.12;
+ctx.font=player.h+'px serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(player.emoji,player.x,player.y);
+for(let i=foods.length-1;i>=0;i--){const f=foods[i];f.y+=f.vy;ctx.font=f.size+'px serif';ctx.fillText(f.emoji,f.x,f.y);if(Math.abs(f.x-player.x)<36&&Math.abs(f.y-player.y)<36){score+=f.pts;addParticles(f.x,f.y,'#ffd700');foods.splice(i,1);}else if(f.y>canvas.height+20)foods.splice(i,1);}
+for(let i=bombs.length-1;i>=0;i--){const b=bombs[i];b.y+=b.vy;ctx.font=b.size+'px serif';ctx.fillText(b.emoji,b.x,b.y);if(Math.abs(b.x-player.x)<34&&Math.abs(b.y-player.y)<34){lives--;addParticles(b.x,b.y,'#ff4500');bombs.splice(i,1);if(lives<=0){gameOver();return;}}else if(b.y>canvas.height+20)bombs.splice(i,1);}
+for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.x+=p.vx;p.y+=p.vy;p.vy+=0.2;p.alpha-=0.04;ctx.globalAlpha=p.alpha;ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;if(p.alpha<=0)particles.splice(i,1);}
+updateHUD();if(running)raf=requestAnimationFrame(loop);}
+function drawBg(){const g=ctx.createLinearGradient(0,0,0,canvas.height);g.addColorStop(0,'#1a0a00');g.addColorStop(1,'#2d1200');ctx.fillStyle=g;ctx.fillRect(0,0,canvas.width,canvas.height);}
+function getPos(e){const r=canvas.getBoundingClientRect();const scaleX=canvas.width/r.width;if(e.touches)return{x:(e.touches[0].clientX-r.left)*scaleX};return{x:(e.clientX-r.left)*scaleX};}
+canvas.addEventListener('touchstart',e=>{e.preventDefault();if(running)player.tx=getPos(e).x;},{passive:false});
+canvas.addEventListener('touchmove',e=>{e.preventDefault();if(running)player.tx=getPos(e).x;},{passive:false});
+canvas.addEventListener('touchend',e=>{e.preventDefault();},{passive:false});
+canvas.addEventListener('mousedown',e=>{if(running)player.tx=getPos(e).x;});
+canvas.addEventListener('mousemove',e=>{if(e.buttons&&running)player.tx=getPos(e).x;});
+canvas.addEventListener('mouseup',()=>{});
+async function gameOver(){running=false;cancelAnimationFrame(raf);document.getElementById('hud').style.display='none';document.getElementById('overScreen').style.display='flex';document.getElementById('finalScore').textContent=nickname+' 님의 점수: '+score;await SB.from('scores').insert({game_date:'2026-05-24',nickname,score});const{data}=await SB.from('scores').select('nickname,score').eq('game_date','2026-05-24').order('score',{ascending:false}).limit(5);const el=document.getElementById('boardRows');if(data&&data.length){el.innerHTML=data.map((r,i)=>`<div class="boardRow">${['🥇','🥈','🥉','4️⃣','5️⃣'][i]} ${r.nickname}<span>${r.score}</span></div>`).join('');}else{el.innerHTML='<div class="boardRow" style="color:#aaa">기록 없음</div>';}}
+</script>
+</body>
+</html>
