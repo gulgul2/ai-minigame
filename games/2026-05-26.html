@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Future Match3</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#0a0a1a;font-family:'Arial',sans-serif;overflow:hidden;}
+canvas{position:fixed;top:0;left:0;z-index:1;width:100%;height:100%;}
+.screen{position:fixed;z-index:10;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;}
+.hidden{display:none!important;}
+h1{color:#00ffff;font-size:2rem;text-shadow:0 0 20px #00ffff;margin-bottom:30px;letter-spacing:4px;}
+.nick-btn{background:transparent;border:2px solid #00ffff;color:#00ffff;padding:12px 28px;margin:8px;border-radius:8px;font-size:1.1rem;cursor:pointer;transition:all 0.2s;min-width:120px;}
+.nick-btn.selected,.nick-btn:hover{background:#00ffff;color:#0a0a1a;box-shadow:0 0 15px #00ffff;}
+#startBtn{background:linear-gradient(135deg,#00ffff,#0080ff);color:#0a0a1a;border:none;padding:14px 40px;border-radius:10px;font-size:1.2rem;font-weight:bold;cursor:pointer;margin-top:20px;box-shadow:0 0 20px #00ffff44;}
+#hud{position:fixed;top:0;left:0;z-index:5;width:100%;padding:10px 20px;display:flex;justify-content:space-between;align-items:center;background:rgba(0,0,0,0.5);}
+#hud span{color:#00ffff;font-size:1.1rem;text-shadow:0 0 8px #00ffff;}
+#overScreen{background:rgba(5,5,25,0.97);}
+.over-box{background:rgba(0,255,255,0.05);border:1px solid #00ffff44;border-radius:16px;padding:30px;text-align:center;min-width:280px;}
+.over-box h2{color:#00ffff;font-size:1.6rem;margin-bottom:10px;text-shadow:0 0 10px #00ffff;}
+.score-disp{color:#fff;font-size:1.3rem;margin:10px 0 20px;}
+.lb-title{color:#0080ff;font-size:1rem;margin-bottom:8px;}
+.lb-item{color:#ccc;font-size:0.95rem;padding:4px 0;border-bottom:1px solid #ffffff11;}
+.lb-item span{color:#00ffff;}
+#retryBtn{background:linear-gradient(135deg,#00ffff,#0080ff);color:#0a0a1a;border:none;padding:12px 36px;border-radius:10px;font-size:1.1rem;font-weight:bold;cursor:pointer;margin-top:20px;}
+.nick-row{display:flex;flex-wrap:wrap;justify-content:center;}
+.date-tag{color:#0080ff;font-size:0.85rem;margin-bottom:16px;letter-spacing:2px;}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud" class="hidden"><span id="nickDisp"></span><span>SCORE: <b id="scoreDisp">0</b></span><span id="timeDisp">60</span></div>
+<div class="screen" id="nickScreen">
+<h1>⬡ FUTURE MATCH</h1>
+<div class="date-tag">2026-05-26</div>
+<div class="nick-row" id="nickBtns">
+<button class="nick-btn" onclick="selectNick(this,'태형')">태형</button>
+<button class="nick-btn" onclick="selectNick(this,'상이')">상이</button>
+<button class="nick-btn" onclick="selectNick(this,'세준')">세준</button>
+<button class="nick-btn" onclick="selectNick(this,'영근')">영근</button>
+</div>
+<button id="startBtn" onclick="startGame()">START</button>
+</div>
+<div class="screen hidden" id="overScreen">
+<div class="over-box">
+<h2>GAME OVER</h2>
+<div class="score-disp">SCORE: <span id="finalScore">0</span></div>
+<div class="lb-title">🏆 TODAY LEADERBOARD</div>
+<div id="lb"></div>
+<button id="retryBtn" onclick="retry()">다시하기</button>
+</div>
+</div>
+<script>
+const SB=window.supabase.createClient('https://zypthfexxjcsguycjggr.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5cHRoZmV4eGpjc2d1eWNqZ2dyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3Njc2NzksImV4cCI6MjA5MjM0MzY3OX0.HaC4ltXQrO7_BQCeLqBVtvCBs4wL3Hzy6Ow_mO24vs0');
+const COLS=7,ROWS=8,TYPES=5,TIME_LIMIT=60;
+const COLORS=['#ff4488','#00ffff','#ffdd00','#44ff88','#aa44ff'];
+const GLOWS=['#ff006688','#00ffff88','#ffdd0088','#44ff8888','#aa44ff88'];
+const SYMBOLS=['◈','⬡','✦','⟁','⬟'];
+let nickname='',score=0,timer=TIME_LIMIT,grid=[],sel=null,animating=false,gameActive=false,timerID=null;
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+let CW,CH,ox,oy,cw,ch;
+function resize(){CW=canvas.width=window.innerWidth;CH=canvas.height=window.innerHeight;cw=Math.min(Math.floor(CW/COLS),Math.floor((CH-80)/ROWS));ch=cw;ox=(CW-cw*COLS)/2;oy=(CH-ch*ROWS)/2+40;if(gameActive)draw();}
+window.addEventListener('resize',resize);
+function selectNick(btn,n){nickname=n;document.querySelectorAll('.nick-btn').forEach(b=>b.classList.remove('selected'));btn.classList.add('selected');}
+function startGame(){if(!nickname)return;document.getElementById('nickScreen').classList.add('hidden');document.getElementById('hud').classList.remove('hidden');document.getElementById('nickDisp').textContent=nickname;score=0;timer=TIME_LIMIT;gameActive=true;resize();initGrid();updateHUD();timerID=setInterval(tick,1000);loop();}
+function tick(){if(!gameActive)return;timer--;document.getElementById('timeDisp').textContent=timer;if(timer<=0)endGame();}
+function initGrid(){grid=[];for(let r=0;r<ROWS;r++){grid[r]=[];for(let c=0;c<COLS;c++)grid[r][c]=Math.floor(Math.random()*TYPES);}}
+function updateHUD(){document.getElementById('scoreDisp').textContent=score;}
+let raf;
+function loop(){raf=requestAnimationFrame(loop);draw();}
+function draw(){ctx.clearRect(0,0,CW,CH);drawBG();for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++)drawCell(r,c);}
+function drawBG(){ctx.fillStyle='#070714';ctx.fillRect(0,0,CW,CH);for(let i=0;i<40;i++){ctx.fillStyle=`rgba(0,255,255,${Math.random()*0.3})`;ctx.fillRect(Math.random()*CW,Math.random()*CH,1,1);}}
+function drawCell(r,c){if(grid[r][c]<0)return;const x=ox+c*cw,y=oy+r*ch,t=grid[r][c];const pad=4,rx=x+pad,ry=y+pad,rw=cw-pad*2,rh=ch-pad*2;ctx.save();if(sel&&sel[0]===r&&sel[1]===c){ctx.shadowColor=COLORS[t];ctx.shadowBlur=20;ctx.strokeStyle=COLORS[t];ctx.lineWidth=3;ctx.strokeRect(rx-2,ry-2,rw+4,rh+4);}const g=ctx.createLinearGradient(rx,ry,rx+rw,ry+rh);g.addColorStop(0,'#1a1a3a');g.addColorStop(1,'#0d0d25');ctx.fillStyle=g;ctx.beginPath();ctx.roundRect(rx,ry,rw,rh,8);ctx.fill();ctx.shadowColor=GLOWS[t];ctx.shadowBlur=12;ctx.fillStyle=COLORS[t];ctx.font=`bold ${cw*0.45}px Arial`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(SYMBOLS[t],x+cw/2,y+ch/2);ctx.restore();}
+function getCell(px,py){const c=Math.floor((px-ox)/cw),r=Math.floor((py-oy)/ch);if(r>=0&&r<ROWS&&c>=0&&c<COLS)return[r,c];return null;}
+let dragStart=null;
+function onDown(px,py){if(!gameActive||animating)return;const cell=getCell(px,py);if(!cell)return;dragStart=cell;sel=cell;}
+function onUp(px,py){if(!gameActive||animating||!dragStart)return;const cell=getCell(px,py);if(cell&&(cell[0]!==dragStart[0]||cell[1]!==dragStart[1])){const dr=cell[0]-dragStart[0],dc=cell[1]-dragStart[1];if(Math.abs(dr)+Math.abs(dc)===1)trySwap(dragStart,cell);}else if(sel&&cell&&sel[0]===cell[0]&&sel[1]===cell[1]&&dragStart){}dragStart=null;}
+function trySwap(a,b){const[ar,ac]=a,[br,bc]=b;[grid[ar][ac],grid[br][bc]]=[grid[br][bc],grid[ar][ac]];const matches=findMatches();if(matches.length){animating=true;removeMatches(matches);setTimeout(()=>{dropDown();setTimeout(()=>{fillGrid();setTimeout(()=>{cascadeCheck();},200);},200);},300);}else{[grid[ar][ac],grid[br][bc]]=[grid[br][bc],grid[ar][ac]];}sel=null;}
+function findMatches(){const set=new Set();for(let r=0;r<ROWS;r++){for(let c=0;c<COLS-2;c++){if(grid[r][c]>=0&&grid[r][c]===grid[r][c+1]&&grid[r][c]===grid[r][c+2]){set.add(`${r},${c}`);set.add(`${r},${c+1}`);set.add(`${r},${c+2}`);}}}for(let c=0;c<COLS;c++){for(let r=0;r<ROWS-2;r++){if(grid[r][c]>=0&&grid[r][c]===grid[r+1][c]&&grid[r][c]===grid[r+2][c]){set.add(`${r},${c}`);set.add(`${r+1},${c}`);set.add(`${r+2},${c}`);}}}return[...set].map(k=>{const[r,c]=k.split(',').map(Number);return[r,c];});}
+function removeMatches(matches){matches.forEach(([r,c])=>{score+=10;grid[r][c]=-1;});updateHUD();}
+function dropDown(){for(let c=0;c<COLS;c++){let empty=ROWS-1;for(let r=ROWS-1;r>=0;r--){if(grid[r][c]>=0){grid[empty][c]=grid[r][c];if(empty!==r)grid[r][c]=-1;empty--;}}for(let r=empty;r>=0;r--)grid[r][c]=-1;}}
+function fillGrid(){for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++)if(grid[r][c]<0)grid[r][c]=Math.floor(Math.random()*TYPES);}
+function cascadeCheck(){const m=findMatches();if(m.length){removeMatches(m);setTimeout(()=>{dropDown();setTimeout(()=>{fillGrid();setTimeout(()=>cascadeCheck(),200);},200);},300);}else{animating=false;}}
+async function endGame(){gameActive=false;clearInterval(timerID);cancelAnimationFrame(raf);document.getElementById('hud').classList.add('hidden');document.getElementById('finalScore').textContent=score;document.getElementById('overScreen').classList.remove('hidden');await SB.from('scores').insert({game_date:'2026-05-26',nickname,score});const{data}=await SB.from('scores').select('nickname,score').eq('game_date','2026-05-26').order('score',{ascending:false}).limit(5);const lb=document.getElementById('lb');lb.innerHTML='';if(data)data.forEach((d,i)=>{lb.innerHTML+=`<div class="lb-item">${i+1}. <span>${d.nickname}</span> ${d.score}</div>`;});}
+function retry(){document.getElementById('overScreen').classList.add('hidden');document.getElementById('nickScreen').classList.remove('hidden');sel=null;animating=false;}
+canvas.addEventListener('mousedown',e=>onDown(e.clientX,e.clientY));
+canvas.addEventListener('mouseup',e=>onUp(e.clientX,e.clientY));
+canvas.addEventListener('mousemove',e=>{if(dragStart)onUp(e.clientX,e.clientY);});
+canvas.addEventListener('touchstart',e=>{e.preventDefault();const t=e.touches[0];onDown(t.clientX,t.clientY);},{passive:false});
+canvas.addEventListener('touchmove',e=>{e.preventDefault();},{passive:false});
+canvas.addEventListener('touchend',e=>{e.preventDefault();const t=e.changedTouches[0];onUp(t.clientX,t.clientY);},{passive:false});
+resize();
+</script>
+</body>
+</html>
