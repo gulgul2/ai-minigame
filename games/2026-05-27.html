@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>판타지 러너</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#1a0a2e;font-family:'Arial',sans-serif;overflow:hidden}
+canvas{position:fixed;top:0;left:0;z-index:1;width:100%;height:100%}
+#nickScreen,#gameoverScreen{position:fixed;z-index:10;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#1a0a2e,#2d1b69)}
+h1{color:#f0c040;font-size:2.2em;text-shadow:0 0 20px #f0c040;margin-bottom:10px}
+.sub{color:#a78bfa;font-size:1em;margin-bottom:30px}
+.nick-btns{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;margin-bottom:24px}
+.nick-btn{padding:12px 24px;border:2px solid #7c3aed;background:transparent;color:#e0d0ff;font-size:1.1em;border-radius:50px;cursor:pointer;transition:all .2s}
+.nick-btn.sel{background:#7c3aed;color:#fff;box-shadow:0 0 15px #7c3aed}
+#startBtn,#restartBtn{padding:14px 40px;background:linear-gradient(90deg,#f0c040,#f97316);color:#1a0a2e;font-size:1.2em;font-weight:bold;border:none;border-radius:50px;cursor:pointer;box-shadow:0 0 20px #f0c040}
+#score-hud{position:fixed;top:12px;left:0;width:100%;text-align:center;z-index:5;color:#f0c040;font-size:1.1em;font-weight:bold;text-shadow:0 0 8px #f0c040;pointer-events:none}
+#gameoverScreen h2{color:#f0c040;font-size:1.8em;margin-bottom:8px}
+#finalScore{color:#fff;font-size:1.2em;margin-bottom:20px}
+#leaderboard{background:rgba(255,255,255,.07);border-radius:12px;padding:16px 28px;margin-bottom:24px;min-width:240px}
+#leaderboard h3{color:#a78bfa;margin-bottom:10px;font-size:1em}
+.lb-row{color:#e0d0ff;font-size:.95em;padding:3px 0;display:flex;justify-content:space-between;gap:20px}
+.lb-row.me{color:#f0c040;font-weight:bold}
+</style>
+</head>
+<body>
+<div id="nickScreen">
+  <h1>✨ 판타지 러너</h1>
+  <div class="sub">닉네임을 선택하세요</div>
+  <div class="nick-btns">
+    <button class="nick-btn" onclick="selectNick(this,'태형')">태형</button>
+    <button class="nick-btn" onclick="selectNick(this,'상이')">상이</button>
+    <button class="nick-btn" onclick="selectNick(this,'세준')">세준</button>
+    <button class="nick-btn" onclick="selectNick(this,'영근')">영근</button>
+  </div>
+  <button id="startBtn" onclick="startGame()">START ▶</button>
+</div>
+<canvas id="c"></canvas>
+<div id="score-hud"></div>
+<div id="gameoverScreen" style="display:none">
+  <h2>💀 GAME OVER</h2>
+  <div id="finalScore"></div>
+  <div id="leaderboard"><h3>🏆 리더보드</h3><div id="lbList">로딩중...</div></div>
+  <button id="restartBtn" onclick="restartGame()">다시하기 🔄</button>
+</div>
+<script>
+const SB=window.supabase.createClient('https://zypthfexxjcsguycjggr.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5cHRoZmV4eGpjc2d1eWNqZ2dyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3Njc2NzksImV4cCI6MjA5MjM0MzY3OX0.HaC4ltXQrO7_BQCeLqBVtvCBs4wL3Hzy6Ow_mO24vs0');
+const canvas=document.getElementById('c'),ctx=canvas.getContext('2d');
+let W,H,nick='',running=false,score=0,hiScore=0,frame=0,spd=4,raf;
+let player,obstacles,particles,stars,bgX=0;
+function selectNick(el,n){document.querySelectorAll('.nick-btn').forEach(b=>b.classList.remove('sel'));el.classList.add('sel');nick=n}
+function resize(){W=canvas.width=window.innerWidth;H=canvas.height=window.innerHeight}
+window.addEventListener('resize',()=>{resize();if(!running)drawNickBg()});
+resize();
+function initStars(){stars=[];for(let i=0;i<80;i++)stars.push({x:Math.random()*W,y:Math.random()*H*.6,r:Math.random()*1.5+.3,s:Math.random()*.5+.2})}
+function drawNickBg(){ctx.fillStyle='#1a0a2e';ctx.fillRect(0,0,W,H);if(stars)stars.forEach(s=>{ctx.beginPath();ctx.arc(s.x,s.y,s.r,0,Math.PI*2);ctx.fillStyle='rgba(255,255,200,.7)';ctx.fill()})}
+initStars();drawNickBg();
+function initGame(){
+  score=0;frame=0;spd=4;bgX=0;
+  const gnd=H*.75;
+  player={x:W*.15,y:gnd,w:36,h:52,vy:0,onGround:true,jump:()=>{if(player.onGround){player.vy=-16;player.onGround=false}},frame:0,fTimer:0};
+  obstacles=[];particles=[];
+  for(let i=0;i<3;i++)spawnObs(W+i*300+200);
+}
+function spawnObs(x){
+  const types=['rock','tree','bat'];
+  const t=types[Math.floor(Math.random()*types.length)];
+  const gnd=H*.75;
+  if(t==='bat')obstacles.push({x:x||W+100,y:gnd-100-Math.random()*60,w:34,h:24,t:'bat',flap:0});
+  else if(t==='tree')obstacles.push({x:x||W+100,y:gnd-70,w:28,h:70,t:'tree'});
+  else obstacles.push({x:x||W+100,y:gnd-38,w:32,h:38,t:'rock'});
+}
+function addParticles(x,y,col){for(let i=0;i<12;i++)particles.push({x,y,vx:(Math.random()-0.5)*5,vy:(Math.random()-1)*5,life:1,col:col||'#f0c040'})}
+function drawPlayer(){
+  const p=player,gnd=H*.75;
+  ctx.save();ctx.translate(p.x,p.y);
+  ctx.fillStyle='#7c3aed';ctx.beginPath();ctx.ellipse(0,0,p.w/2,p.h/2,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#e0d0ff';ctx.beginPath();ctx.arc(0,-p.h/2-10,14,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#f0c040';ctx.beginPath();ctx.arc(0,-p.h/2-22,8,Math.PI,0);ctx.fill();
+  const legOff=p.onGround?(Math.sin(frame*.3)*8):0;
+  ctx.fillStyle='#5b21b6';ctx.fillRect(-10,p.h/2-8,10,18+legOff);ctx.fillRect(2,p.h/2-8,10,18-legOff);
+  ctx.fillStyle='#f97316';ctx.fillRect(-12,p.h/2+10+legOff,12,6);ctx.fillRect(2,p.h/2+10-legOff,12,6);
+  ctx.restore();
+}
+function drawObstacle(o){
+  ctx.save();ctx.translate(o.x,o.y);
+  if(o.t==='rock'){ctx.fillStyle='#6b7280';ctx.beginPath();ctx.ellipse(0,0,o.w/2,o.h/2,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#9ca3af';ctx.beginPath();ctx.ellipse(-5,-8,10,8,-.3,0,Math.PI*2);ctx.fill();}
+  else if(o.t==='tree'){ctx.fillStyle='#78350f';ctx.fillRect(-5,0,10,40);ctx.fillStyle='#16a34a';ctx.beginPath();ctx.moveTo(0,-70);ctx.lineTo(-20,0);ctx.lineTo(20,0);ctx.closePath();ctx.fill();ctx.fillStyle='#22c55e';ctx.beginPath();ctx.moveTo(0,-90);ctx.lineTo(-14,-20);ctx.lineTo(14,-20);ctx.closePath();ctx.fill();}
+  else if(o.t==='bat'){o.flap+=.15;const fy=Math.sin(o.flap)*6;ctx.fillStyle='#4c1d95';ctx.beginPath();ctx.ellipse(0,fy,10,7,0,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.moveTo(0,fy);ctx.bezierCurveTo(-20,fy-10,-30,fy+10,-15,fy+5);ctx.fill();ctx.beginPath();ctx.moveTo(0,fy);ctx.bezierCurveTo(20,fy-10,30,fy+10,15,fy+5);ctx.fill();}
+  ctx.restore();
+}
+function drawBg(){
+  const gnd=H*.75;
+  const grad=ctx.createLinearGradient(0,0,0,H);
+  grad.addColorStop(0,'#0f0728');grad.addColorStop(.7,'#1e0a4e');grad.addColorStop(1,'#2d1b69');
+  ctx.fillStyle=grad;ctx.fillRect(0,0,W,H);
+  stars.forEach(s=>{s.x-=s.s*.3;if(s.x<0)s.x=W;ctx.beginPath();ctx.arc(s.x,s.y,s.r,0,Math.PI*2);ctx.fillStyle=`rgba(255,255,200,${.5+Math.sin(frame*.05+s.x)*.3})`;ctx.fill()});
+  ctx.fillStyle='#7c3aed';ctx.font=`${H*.1}px serif`;
+  ctx.fillText('🌙',W*.7-bgX*.1%W,H*.18);
+  ctx.fillStyle='#2d1b69';
+  for(let i=0;i<4;i++){const bx=((i*200-bgX*.5)%(W+300)+W+300)%(W+300);ctx.beginPath();ctx.moveTo(bx,gnd);ctx.lineTo(bx+60,gnd-80);ctx.lineTo(bx+120,gnd-40);ctx.lineTo(bx+160,gnd);ctx.fill();}
+  ctx.fillStyle='#1c4532';ctx.fillRect(0,gnd,W,H-gnd);
+  ctx.fillStyle='#166534';ctx.fillRect(0,gnd,W,6);
+  ctx.strokeStyle='rgba(74,222,128,.3)';ctx.lineWidth=2;ctx.setLineDash([30,20]);ctx.beginPath();ctx.moveTo(0,gnd+3);ctx.lineTo(W,gnd+3);ctx.stroke();ctx.setLineDash([]);
+}
+function gameLoop(){
+  if(!running)return;
+  frame++;bgX+=spd;
+  spd=4+Math.floor(score/300)*.5;
+  const gnd=H*.75;
+  player.vy+=.7;player.y+=player.vy;
+  if(player.y>=gnd){player.y=gnd;player.vy=0;player.onGround=true}
+  obstacles.forEach(o=>{o.x-=spd+(o.t==='bat'?1:0)});
+  obstacles=obstacles.filter(o=>o.x>-100);
+  while(obstacles.length<3)spawnObs(obstacles.length?Math.max(...obstacles.map(o=>o.x))+250+Math.random()*200:W+200);
+  obstacles.forEach(o=>{
+    const px=player.x,py=player.y,pw=player.w*.55,ph=player.h*.55;
+    const ox=o.x,oy=o.y+(o.t==='bat'?Math.sin(o.flap||0)*6:0),ow=o.w*.55,oh=o.h*.55;
+    if(Math.abs(px-ox)<pw+ow&&Math.abs(py-oy)<ph+oh){addParticles(px,py,'#f97316');endGame();return}
+  });
+  particles=particles.filter(p=>p.life>0);
+  particles.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=.3;p.life-=.04});
+  score++;
+  drawBg();
+  drawPlayer();
+  obstacles.forEach(drawObstacle);
+  particles.forEach(p=>{ctx.globalAlpha=p.life;ctx.fillStyle=p.col;ctx.beginPath();ctx.arc(p.x,p.y,4,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1});
+  document.getElementById('score-hud').textContent=`✨ ${nick}  |  점수: ${score}  |  최고: ${hiScore}`;
+  raf=requestAnimationFrame(gameLoop);
+}
+async function endGame(){
+  running=false;cancelAnimationFrame(raf);
+  if(score>hiScore)hiScore=score;
+  document.getElementById('score-hud').textContent='';
+  document.getElementById('finalScore').textContent=`${nick}의 점수: ${score}`;
+  document.getElementById('gameoverScreen').style.display='flex';
+  await SB.from('scores').insert({game_date:'2026-05-27',nickname:nick,score});
+  const{data}=await SB.from('scores').select('nickname,score').eq('game_date','2026-05-27').order('score',{ascending:false}).limit(5);
+  const list=document.getElementById('lbList');
+  list.innerHTML='';
+  (data||[]).forEach((r,i)=>{const d=document.createElement('div');d.className='lb-row'+(r.nickname===nick&&r.score===score?' me':'');d.innerHTML=`<span>${i+1}. ${r.nickname}</span><span>${r.score}</span>`;list.appendChild(d)});
+}
+function startGame(){
+  if(!nick){alert('닉네임을 선택해주세요!');return}
+  document.getElementById('nickScreen').style.display='none';
+  initGame();running=true;gameLoop();
+}
+function restartGame(){
+  document.getElementById('gameoverScreen').style.display='none';
+  initGame();running=true;gameLoop();
+}
+function handleJump(){if(running)player.jump()}
+canvas.addEventListener('touchstart',e=>{e.preventDefault();handleJump()},{passive:false});
+canvas.addEventListener('touchmove',e=>e.preventDefault(),{passive:false});
+canvas.addEventListener('touchend',e=>e.preventDefault(),{passive:false});
+canvas.addEventListener('mousedown',handleJump);
+canvas.addEventListener('mousemove',()=>{});
+canvas.addEventListener('mouseup',()=>{});
+document.addEventListener('keydown',e=>{if(e.code==='Space'||e.code==='ArrowUp')handleJump()});
+</script>
+</body>
+</html>
