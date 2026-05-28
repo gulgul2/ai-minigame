@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>우주 아케이드</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#000;font-family:'Arial',sans-serif;overflow:hidden}
+canvas{position:fixed;top:0;left:0;z-index:1;width:100%;height:100%}
+.screen{position:fixed;z-index:10;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,20,0.92)}
+.screen h1{color:#7df;font-size:2.2em;margin-bottom:20px;text-shadow:0 0 20px #7df}
+.screen h2{color:#fa0;font-size:1.5em;margin-bottom:16px}
+.btn-row{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-bottom:18px}
+.nick-btn{padding:12px 22px;font-size:1.1em;border:2px solid #7df;background:transparent;color:#7df;border-radius:10px;cursor:pointer;transition:.2s}
+.nick-btn.selected,.nick-btn:hover{background:#7df;color:#000}
+.start-btn{padding:14px 40px;font-size:1.2em;background:#fa0;color:#000;border:none;border-radius:12px;cursor:pointer;font-weight:bold;margin-top:6px}
+.start-btn:hover{background:#fc0}
+#hud{position:fixed;z-index:10;top:10px;left:0;width:100%;display:none;justify-content:space-between;padding:0 16px;color:#fff;font-size:1.1em;pointer-events:none}
+.lb{width:90%;max-width:340px;background:rgba(0,0,40,0.8);border:1px solid #7df;border-radius:10px;padding:12px;margin-top:10px}
+.lb h3{color:#7df;margin-bottom:8px;text-align:center}
+.lb-row{display:flex;justify-content:space-between;color:#cef;font-size:0.95em;padding:3px 0;border-bottom:1px solid #224}
+#finalScore{color:#fa0;font-size:1.4em;margin:8px 0}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud"><span id="scoreHud">점수: 0</span><span id="lifeHud">♥♥♥</span></div>
+<div id="nickScreen" class="screen">
+  <h1>🚀 우주 전쟁</h1>
+  <h2>닉네임 선택</h2>
+  <div class="btn-row">
+    <button class="nick-btn" onclick="selectNick(this,'태형')">태형</button>
+    <button class="nick-btn" onclick="selectNick(this,'상이')">상이</button>
+    <button class="nick-btn" onclick="selectNick(this,'세준')">세준</button>
+    <button class="nick-btn" onclick="selectNick(this,'영근')">영근</button>
+  </div>
+  <button class="start-btn" onclick="startGame()">START</button>
+</div>
+<div id="overScreen" class="screen hidden">
+  <h1>💀 게임 오버</h1>
+  <div id="finalScore"></div>
+  <div class="lb"><h3>🏆 리더보드</h3><div id="lbList"></div></div>
+  <button class="start-btn" style="margin-top:16px" onclick="resetGame()">다시하기</button>
+</div>
+<script>
+const SB=window.supabase.createClient('https://zypthfexxjcsguycjggr.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5cHRoZmV4eGpjc2d1eWNqZ2dyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3Njc2NzksImV4cCI6MjA5MjM0MzY3OX0.HaC4ltXQrO7_BQCeLqBVtvCBs4wL3Hzy6Ow_mO24vs0');
+const canvas=document.getElementById('c'),ctx=canvas.getContext('2d');
+let W,H,nick='',score=0,lives=3,running=false,stars=[],bullets=[],enemies=[],particles=[],ship,shootTimer=0,enemyTimer=0,frame=0,inputX=null,touching=false;
+function resize(){W=canvas.width=window.innerWidth;H=canvas.height=window.innerHeight}
+window.addEventListener('resize',resize);resize();
+function selectNick(el,n){document.querySelectorAll('.nick-btn').forEach(b=>b.classList.remove('selected'));el.classList.add('selected');nick=n}
+function startGame(){if(!nick){alert('닉네임을 선택해주세요!');return}document.getElementById('nickScreen').classList.add('hidden');document.getElementById('hud').style.display='flex';initGame();running=true;loop()}
+function initGame(){score=0;lives=3;bullets=[];enemies=[];particles=[];shootTimer=0;enemyTimer=0;frame=0;inputX=null;touching=false;ship={x:W/2,y:H-90,w:36,h:36};stars=Array.from({length:80},()=>({x:Math.random()*W,y:Math.random()*H,s:Math.random()*2+0.5,sp:Math.random()*1.5+0.5}));updateHud()}
+function updateHud(){document.getElementById('scoreHud').textContent='점수: '+score;document.getElementById('lifeHud').textContent='♥'.repeat(lives)+'♡'.repeat(Math.max(0,3-lives))}
+canvas.addEventListener('touchstart',e=>{e.preventDefault();touching=true;inputX=e.touches[0].clientX},{ passive:false});
+canvas.addEventListener('touchmove',e=>{e.preventDefault();if(touching)inputX=e.touches[0].clientX},{ passive:false});
+canvas.addEventListener('touchend',e=>{e.preventDefault();touching=false;inputX=null},{passive:false});
+canvas.addEventListener('mousedown',e=>{touching=true;inputX=e.clientX});
+canvas.addEventListener('mousemove',e=>{if(touching)inputX=e.clientX});
+canvas.addEventListener('mouseup',()=>{touching=false;inputX=null});
+function spawnEnemy(){const t=Math.floor(Math.random()*3);const x=40+Math.random()*(W-80);enemies.push({x,y:-30,w:30,h:30,type:t,hp:t===2?3:1,speed:1.5+Math.random()*1.5+(score/2000)})}
+function spawnParticles(x,y,col){for(let i=0;i<10;i++)particles.push({x,y,vx:(Math.random()-0.5)*4,vy:(Math.random()-0.5)*4,life:30,col})}
+function drawShip(x,y){ctx.save();ctx.translate(x,y);ctx.fillStyle='#7df';ctx.beginPath();ctx.moveTo(0,-18);ctx.lineTo(14,14);ctx.lineTo(0,8);ctx.lineTo(-14,14);ctx.closePath();ctx.fill();ctx.fillStyle='#fa0';ctx.beginPath();ctx.moveTo(-5,10);ctx.lineTo(0,20);ctx.lineTo(5,10);ctx.closePath();ctx.fill();ctx.restore()}
+function drawEnemy(e){ctx.save();ctx.translate(e.x,e.y);const cols=['#f66','#f9a','#a6f'];ctx.fillStyle=cols[e.type];if(e.type===0){ctx.beginPath();ctx.arc(0,0,15,0,Math.PI*2);ctx.fill()}else if(e.type===1){ctx.fillRect(-14,-10,28,20)}else{ctx.beginPath();ctx.moveTo(0,-16);ctx.lineTo(16,12);ctx.lineTo(-16,12);ctx.closePath();ctx.fill()}ctx.restore()}
+function loop(){if(!running)return;requestAnimationFrame(loop);frame++;ctx.clearRect(0,0,W,H);
+ctx.fillStyle='#000010';ctx.fillRect(0,0,W,H);
+stars.forEach(s=>{s.y+=s.sp;if(s.y>H)s.y=0;ctx.fillStyle='rgba(255,255,255,'+(s.s/3)+')';ctx.beginPath();ctx.arc(s.x,s.y,s.s,0,Math.PI*2);ctx.fill()});
+if(inputX!==null){const dx=inputX-ship.x;ship.x+=dx*0.18;ship.x=Math.max(22,Math.min(W-22,ship.x))}
+shootTimer++;if(shootTimer>18){shootTimer=0;bullets.push({x:ship.x,y:ship.y-20,vy:-12})}
+enemyTimer++;const et=Math.max(40,80-score/100);if(enemyTimer>et){enemyTimer=0;spawnEnemy()}
+bullets=bullets.filter(b=>{b.y+=b.vy;ctx.fillStyle='#ff9';ctx.fillRect(b.x-3,b.y-8,6,16);return b.y>-10});
+enemies=enemies.filter(e=>{e.y+=e.speed;let hit=false;bullets=bullets.filter(b=>{if(Math.abs(b.x-e.x)<e.w&&Math.abs(b.y-e.y)<e.h){e.hp--;spawnParticles(e.x,e.y,'#fa0');hit=true;return false}return true});if(hit&&e.hp<=0){score+=e.type===2?30:e.type===1?20:10;updateHud();return false}if(Math.abs(ship.x-e.x)<28&&Math.abs(ship.y-e.y)<28){lives--;spawnParticles(ship.x,ship.y,'#f00');updateHud();if(lives<=0){gameOver();return false}return false}drawEnemy(e);return e.y<H+40});
+particles=particles.filter(p=>{p.x+=p.vx;p.y+=p.vy;p.life--;ctx.globalAlpha=p.life/30;ctx.fillStyle=p.col;ctx.fillRect(p.x-2,p.y-2,4,4);ctx.globalAlpha=1;return p.life>0});
+drawShip(ship.x,ship.y)}
+async function gameOver(){running=false;document.getElementById('hud').style.display='none';document.getElementById('overScreen').classList.remove('hidden');document.getElementById('finalScore').textContent=nick+'의 점수: '+score;await SB.from('scores').insert({game_date:'2026-05-29',nickname:nick,score});const{data}=await SB.from('scores').select('nickname,score').eq('game_date','2026-05-29').order('score',{ascending:false}).limit(5);const lb=document.getElementById('lbList');lb.innerHTML='';if(data)data.forEach((r,i)=>{lb.innerHTML+=`<div class="lb-row"><span>${i+1}. ${r.nickname}</span><span>${r.score}</span></div>`})}
+function resetGame(){document.getElementById('overScreen').classList.add('hidden');document.getElementById('nickScreen').classList.remove('hidden');document.getElementById('hud').style.display='none';nick='';document.querySelectorAll('.nick-btn').forEach(b=>b.classList.remove('selected'))}
+</script>
+</body>
+</html>
