@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>음식 블록깨기</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#1a0a00;font-family:'Arial',sans-serif;overflow:hidden}
+canvas{position:fixed;top:0;left:0;z-index:1;width:100%;height:100%}
+#nickScreen,#overScreen{position:fixed;z-index:10;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(20,5,0,0.95)}
+h1{color:#ff6b35;font-size:2rem;margin-bottom:8px;text-shadow:0 0 20px #ff6b35}
+.sub{color:#ffb347;margin-bottom:30px;font-size:1rem}
+.nick-btns{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-bottom:24px}
+.nick-btn{padding:12px 22px;border:2px solid #ff6b35;background:transparent;color:#ff6b35;border-radius:25px;font-size:1.1rem;cursor:pointer;transition:all .2s}
+.nick-btn.active,.nick-btn:hover{background:#ff6b35;color:#fff}
+#startBtn,#restartBtn{padding:14px 40px;background:linear-gradient(135deg,#ff6b35,#ff8c42);border:none;color:#fff;border-radius:30px;font-size:1.2rem;cursor:pointer;box-shadow:0 4px 20px rgba(255,107,53,.5);margin-top:8px}
+#scoreDisplay{color:#ffb347;font-size:1.3rem;margin-bottom:16px}
+#leaderboard{background:rgba(255,107,53,.1);border:1px solid #ff6b35;border-radius:12px;padding:16px 28px;margin-bottom:20px;min-width:220px}
+#leaderboard h3{color:#ff6b35;text-align:center;margin-bottom:10px}
+.lb-row{color:#ffe0c0;font-size:.95rem;padding:3px 0;display:flex;justify-content:space-between;gap:20px}
+#hud{position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:5;color:#ffb347;font-size:1rem;pointer-events:none;text-shadow:0 1px 4px #000}
+</style>
+</head>
+<body>
+<div id="nickScreen">
+  <h1>🍕 푸드 블록깨기</h1>
+  <p class="sub">2026-05-30</p>
+  <div class="nick-btns">
+    <button class="nick-btn" onclick="selectNick(this,'태형')">태형</button>
+    <button class="nick-btn" onclick="selectNick(this,'상이')">상이</button>
+    <button class="nick-btn" onclick="selectNick(this,'세준')">세준</button>
+    <button class="nick-btn" onclick="selectNick(this,'영근')">영근</button>
+  </div>
+  <button id="startBtn" onclick="startGame()">START</button>
+</div>
+<div id="hud" style="display:none">점수: <span id="hudScore">0</span></div>
+<canvas id="c"></canvas>
+<div id="overScreen" style="display:none">
+  <h1>🍔 GAME OVER</h1>
+  <div id="scoreDisplay"></div>
+  <div id="leaderboard"><h3>🏆 리더보드</h3><div id="lbRows">로딩중...</div></div>
+  <button id="restartBtn" onclick="location.reload()">다시하기</button>
+</div>
+<script>
+const SB=window.supabase.createClient('https://zypthfexxjcsguycjggr.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5cHRoZmV4eGpjc2d1eWNqZ2dyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3Njc2NzksImV4cCI6MjA5MjM0MzY3OX0.HaC4ltXQrO7_BQCeLqBVtvCBs4wL3Hzy6Ow_mO24vs0');
+const canvas=document.getElementById('c'),ctx=canvas.getContext('2d');
+let W,H,nickname='',score=0,lives=3,running=false,raf;
+let ball,paddle,blocks=[];
+const FOODS=['🍕','🍔','🌮','🍩','🍦','🍰','🍣','🍜','🍎','🍇'];
+const COLS=['#ff6b35','#ff8c42','#ffd166','#06d6a0','#118ab2','#ef476f','#f4a261','#e76f51','#2ec4b6','#cbf3f0'];
+function resize(){W=canvas.width=window.innerWidth;H=canvas.height=window.innerHeight}
+function initGame(){
+  resize();
+  const pw=Math.min(W*0.18,100),ph=14;
+  paddle={x:W/2-pw/2,y:H-60,w:pw,h:ph,speed:0};
+  const bw=Math.min(W*0.13,70),bh=26,cols=Math.floor(W/(bw+6)),rows=5;
+  const ox=(W-(cols*(bw+6)-6))/2;
+  blocks=[];
+  for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){
+    blocks.push({x:ox+c*(bw+6),y:60+r*(bh+6),w:bw,h:bh,alive:true,food:FOODS[Math.floor(Math.random()*FOODS.length)],color:COLS[(r+c)%COLS.length],hp:r<2?1:2});
+  }
+  const spd=Math.min(W,H)*0.007;
+  ball={x:W/2,y:H/2,r:10,vx:spd*(Math.random()>0.5?1:-1),vy:-spd};
+  score=0;lives=3;running=true;
+  document.getElementById('hud').style.display='block';
+  document.getElementById('hudScore').textContent=0;
+}
+function selectNick(btn,name){document.querySelectorAll('.nick-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');nickname=name}
+function startGame(){if(!nickname){alert('닉네임을 선택하세요!');return}document.getElementById('nickScreen').style.display='none';initGame();loop()}
+function drawBg(){ctx.fillStyle='#1a0a00';ctx.fillRect(0,0,W,H);for(let i=0;i<6;i++){ctx.save();ctx.globalAlpha=0.04;ctx.font=`${40+i*10}px serif`;ctx.fillStyle='#ff6b35';ctx.fillText(FOODS[i],i*120%W,i*80%H+40);ctx.restore()}}
+function drawPaddle(){const g=ctx.createLinearGradient(paddle.x,paddle.y,paddle.x,paddle.y+paddle.h);g.addColorStop(0,'#ff8c42');g.addColorStop(1,'#ff6b35');ctx.fillStyle=g;ctx.beginPath();ctx.roundRect(paddle.x,paddle.y,paddle.w,paddle.h,7);ctx.fill();ctx.strokeStyle='#ffb347';ctx.lineWidth=1.5;ctx.stroke()}
+function drawBall(){ctx.save();ctx.shadowColor='#ff6b35';ctx.shadowBlur=15;ctx.beginPath();ctx.arc(ball.x,ball.y,ball.r,0,Math.PI*2);ctx.fillStyle='#ffd166';ctx.fill();ctx.restore();ctx.font=`${ball.r*1.5}px serif`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('🍊',ball.x,ball.y)}
+function drawBlocks(){blocks.forEach(b=>{if(!b.alive)return;const g=ctx.createLinearGradient(b.x,b.y,b.x,b.y+b.h);g.addColorStop(0,b.color+'dd');g.addColorStop(1,b.color+'88');ctx.fillStyle=g;ctx.beginPath();ctx.roundRect(b.x,b.y,b.w,b.h,5);ctx.fill();ctx.strokeStyle='rgba(255,255,255,0.3)';ctx.lineWidth=1;ctx.stroke();ctx.font=`${b.h*0.7}px serif`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(b.food,b.x+b.w/2,b.y+b.h/2)})}
+function drawHUD(){ctx.fillStyle='#ffb347';ctx.font='bold 16px Arial';ctx.textAlign='left';ctx.fillText('❤️'.repeat(lives),10,28)}
+function update(){
+  ball.x+=ball.vx;ball.y+=ball.vy;
+  if(ball.x-ball.r<0){ball.x=ball.r;ball.vx*=-1}
+  if(ball.x+ball.r>W){ball.x=W-ball.r;ball.vx*=-1}
+  if(ball.y-ball.r<0){ball.y=ball.r;ball.vy*=-1}
+  if(ball.y+ball.r>H+20){lives--;if(lives<=0){endGame();return}ball.x=W/2;ball.y=H/2;ball.vy=Math.abs(ball.vy)*-1}
+  if(ball.y+ball.r>=paddle.y&&ball.y-ball.r<=paddle.y+paddle.h&&ball.x>=paddle.x&&ball.x<=paddle.x+paddle.w){
+    ball.vy=-Math.abs(ball.vy);const hit=(ball.x-(paddle.x+paddle.w/2))/(paddle.w/2);ball.vx=hit*Math.abs(ball.vy)*1.2;ball.y=paddle.y-ball.r;
+  }
+  blocks.forEach(b=>{if(!b.alive)return;if(ball.x+ball.r>b.x&&ball.x-ball.r<b.x+b.w&&ball.y+ball.r>b.y&&ball.y-ball.r<b.y+b.h){
+    b.hp--;if(b.hp<=0){b.alive=false;score+=10;document.getElementById('hudScore').textContent=score}
+    const overlapL=ball.x+ball.r-b.x,overlapR=b.x+b.w-ball.x+ball.r;
+    const overlapT=ball.y+ball.r-b.y,overlapB=b.y+b.h-(ball.y-ball.r);
+    const minH=Math.min(overlapL,overlapR),minV=Math.min(overlapT,overlapB);
+    if(minH<minV)ball.vx*=-1;else ball.vy*=-1;
+  }});
+  if(blocks.every(b=>!b.alive)){score+=50;endGame()}
+}
+function loop(){if(!running)return;drawBg();drawBlocks();drawPaddle();drawBall();drawHUD();update();raf=requestAnimationFrame(loop)}
+async function endGame(){running=false;cancelAnimationFrame(raf);document.getElementById('hud').style.display='none';document.getElementById('overScreen').style.display='flex';document.getElementById('scoreDisplay').textContent=`${nickname}님의 점수: ${score}`;
+  await SB.from('scores').insert({game_date:'2026-05-30',nickname,score});
+  const {data}=await SB.from('scores').select('nickname,score').eq('game_date','2026-05-30').order('score',{ascending:false}).limit(5);
+  const el=document.getElementById('lbRows');
+  if(data&&data.length){el.innerHTML=data.map((r,i)=>`<div class="lb-row"><span>${['🥇','🥈','🥉','4️⃣','5️⃣'][i]} ${r.nickname}</span><span>${r.score}</span></div>`).join('')}else{el.textContent='기록 없음'}
+}
+let dragX=null;
+function getMX(e){return e.touches?e.touches[0].clientX:e.clientX}
+canvas.addEventListener('mousedown',e=>{dragX=getMX(e)});
+canvas.addEventListener('mousemove',e=>{if(dragX===null)return;const dx=getMX(e)-dragX;paddle.x=Math.max(0,Math.min(W-paddle.w,paddle.x+dx));dragX=getMX(e)});
+canvas.addEventListener('mouseup',()=>{dragX=null});
+canvas.addEventListener('touchstart',e=>{e.preventDefault();dragX=getMX(e)},{passive:false});
+canvas.addEventListener('touchmove',e=>{e.preventDefault();if(dragX===null)return;const dx=getMX(e)-dragX;paddle.x=Math.max(0,Math.min(W-paddle.w,paddle.x+dx));dragX=getMX(e)},{passive:false});
+canvas.addEventListener('touchend',e=>{e.preventDefault();dragX=null},{passive:false});
+window.addEventListener('resize',()=>{if(running){resize();paddle.y=H-60}});
+resize();ctx.fillStyle='#1a0a00';ctx.fillRect(0,0,W,H);
+</script>
+</body>
+</html>
