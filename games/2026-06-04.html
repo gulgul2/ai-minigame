@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>우주 블록깨기</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #000; overflow: hidden; font-family: 'Arial', sans-serif; }
+canvas { position: fixed; top: 0; left: 0; z-index: 1; width: 100%; height: 100%; }
+#nickScreen, #overScreen { position: fixed; z-index: 10; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(0,0,10,0.92); color: #fff; }
+h1 { font-size: 2em; color: #7df; text-shadow: 0 0 20px #07f; margin-bottom: 30px; letter-spacing: 4px; }
+h2 { font-size: 1.5em; color: #7df; margin-bottom: 16px; }
+.nick-btns { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; margin-bottom: 28px; }
+.nick-btn { padding: 12px 22px; border: 2px solid #07f; background: transparent; color: #7df; font-size: 1.1em; border-radius: 8px; cursor: pointer; transition: all 0.2s; }
+.nick-btn.selected, .nick-btn:hover { background: #07f; color: #fff; box-shadow: 0 0 14px #07f; }
+.start-btn, .retry-btn { padding: 14px 40px; border: none; background: linear-gradient(135deg,#07f,#0cf); color: #fff; font-size: 1.2em; border-radius: 10px; cursor: pointer; box-shadow: 0 0 18px #07f; margin-top: 8px; }
+#hud { position: fixed; top: 10px; left: 0; width: 100%; z-index: 5; display: flex; justify-content: space-between; padding: 0 18px; color: #7df; font-size: 1em; pointer-events: none; display: none; }
+#leaderboard { margin: 14px 0; width: 280px; }
+#leaderboard table { width: 100%; border-collapse: collapse; }
+#leaderboard td { padding: 6px 10px; border-bottom: 1px solid #07f44; color: #aef; font-size: 0.97em; }
+#leaderboard td:first-child { color: #ff7; }
+#finalScore { font-size: 1.3em; color: #ff7; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud"><span id="scoreTxt">점수: 0</span><span id="liveTxt">❤️❤️❤️</span></div>
+<div id="nickScreen">
+  <h1>🚀 우주 블록깨기</h1>
+  <div class="nick-btns">
+    <button class="nick-btn" onclick="selectNick(this,'태형')">태형</button>
+    <button class="nick-btn" onclick="selectNick(this,'상이')">상이</button>
+    <button class="nick-btn" onclick="selectNick(this,'세준')">세준</button>
+    <button class="nick-btn" onclick="selectNick(this,'영근')">영근</button>
+  </div>
+  <button class="start-btn" onclick="startGame()">START</button>
+</div>
+<div id="overScreen" style="display:none">
+  <h2>🌌 게임 오버</h2>
+  <div id="finalScore"></div>
+  <div id="leaderboard"><table id="lbTable"></table></div>
+  <button class="retry-btn" onclick="location.reload()">다시하기</button>
+</div>
+<script>
+const SB = window.supabase.createClient('https://zypthfexxjcsguycjggr.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5cHRoZmV4eGpjc2d1eWNqZ2dyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3Njc2NzksImV4cCI6MjA5MjM0MzY3OX0.HaC4ltXQrO7_BQCeLqBVtvCBs4wL3Hzy6Ow_mO24vs0');
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let nickname='', score=0, lives=3, running=false, raf;
+let W, H, paddleX, paddleW, paddleH, ballX, ballY, ballDX, ballDY, ballR;
+let blocks=[], stars=[];
+const COLS=7, ROWS=5, BPAD=6;
+function selectNick(el, n){ document.querySelectorAll('.nick-btn').forEach(b=>b.classList.remove('selected')); el.classList.add('selected'); nickname=n; }
+function resize(){ W=canvas.width=canvas.offsetWidth; H=canvas.height=canvas.offsetHeight; }
+function initGame(){
+  resize();
+  paddleW=W*0.22; paddleH=H*0.018; paddleX=(W-paddleW)/2;
+  ballR=W*0.018; ballX=W/2; ballY=H*0.75;
+  let spd=W*0.007; ballDX=spd*(Math.random()>0.5?1:-1); ballDY=-spd;
+  blocks=[];
+  let bw=(W-BPAD*(COLS+1))/COLS, bh=H*0.042;
+  for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++){
+    let hue=200+r*25;
+    blocks.push({x:BPAD+c*(bw+BPAD),y:H*0.1+r*(bh+BPAD),w:bw,h:bh,alive:true,color:`hsl(${hue},90%,60%)`});
+  }
+  stars=[];
+  for(let i=0;i<80;i++) stars.push({x:Math.random()*W,y:Math.random()*H,r:Math.random()*1.5+0.3,s:Math.random()*0.5+0.2});
+}
+function startGame(){
+  if(!nickname){alert('닉네임을 선택하세요!');return;}
+  document.getElementById('nickScreen').style.display='none';
+  document.getElementById('hud').style.display='flex';
+  score=0; lives=3; running=true;
+  initGame(); loop();
+}
+function updateHUD(){ document.getElementById('scoreTxt').textContent='점수: '+score; document.getElementById('liveTxt').textContent='❤️'.repeat(lives); }
+function drawStars(){ stars.forEach(s=>{ s.y+=s.s; if(s.y>H)s.y=0; ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,Math.PI*2); ctx.fillStyle='#fff'; ctx.fill(); }); }
+function drawPaddle(){ let g=ctx.createLinearGradient(paddleX,0,paddleX+paddleW,0); g.addColorStop(0,'#07f'); g.addColorStop(1,'#0cf'); ctx.fillStyle=g; ctx.beginPath(); ctx.roundRect(paddleX,H-paddleH-8,paddleW,paddleH,paddleH/2); ctx.fill(); ctx.shadowColor='#0cf'; ctx.shadowBlur=12; ctx.fill(); ctx.shadowBlur=0; }
+function drawBall(){ ctx.beginPath(); ctx.arc(ballX,ballY,ballR,0,Math.PI*2); let g=ctx.createRadialGradient(ballX-ballR*0.3,ballY-ballR*0.3,1,ballX,ballY,ballR); g.addColorStop(0,'#fff'); g.addColorStop(1,'#f70'); ctx.fillStyle=g; ctx.shadowColor='#f70'; ctx.shadowBlur=14; ctx.fill(); ctx.shadowBlur=0; }
+function drawBlocks(){ blocks.forEach(b=>{ if(!b.alive)return; ctx.fillStyle=b.color; ctx.shadowColor=b.color; ctx.shadowBlur=8; ctx.beginPath(); ctx.roundRect(b.x,b.y,b.w,b.h,4); ctx.fill(); ctx.shadowBlur=0; }); }
+function update(){
+  ballX+=ballDX; ballY+=ballDY;
+  if(ballX-ballR<0){ballX=ballR;ballDX=Math.abs(ballDX);}
+  if(ballX+ballR>W){ballX=W-ballR;ballDX=-Math.abs(ballDX);}
+  if(ballY-ballR<0){ballY=ballR;ballDY=Math.abs(ballDY);}
+  let py=H-paddleH-8;
+  if(ballY+ballR>=py&&ballY+ballR<=py+paddleH+ballR&&ballX>=paddleX-ballR&&ballX<=paddleX+paddleW+ballR){
+    ballDY=-Math.abs(ballDY); let hit=(ballX-(paddleX+paddleW/2))/(paddleW/2); ballDX=hit*W*0.009;
+  }
+  if(ballY-ballR>H){ lives--; updateHUD(); if(lives<=0){endGame();return;} ballX=W/2;ballY=H*0.75;let spd=W*0.007;ballDX=spd*(Math.random()>0.5?1:-1);ballDY=-spd; }
+  blocks.forEach(b=>{ if(!b.alive)return; if(ballX+ballR>b.x&&ballX-ballR<b.x+b.w&&ballY+ballR>b.y&&ballY-ballR<b.y+b.h){ b.alive=false;score+=10; let cx=ballX-(b.x+b.w/2),cy=ballY-(b.y+b.h/2); if(Math.abs(cx/b.w)>Math.abs(cy/b.h))ballDX*=-1;else ballDY*=-1; } });
+  if(blocks.every(b=>!b.alive)){ score+=100; initGame(); }
+}
+function loop(){ if(!running)return; ctx.fillStyle='#000010'; ctx.fillRect(0,0,W,H); drawStars(); drawBlocks(); drawPaddle(); drawBall(); update(); updateHUD(); raf=requestAnimationFrame(loop); }
+async function endGame(){
+  running=false; cancelAnimationFrame(raf);
+  document.getElementById('hud').style.display='none';
+  document.getElementById('overScreen').style.display='flex';
+  document.getElementById('finalScore').textContent=nickname+'님의 점수: '+score;
+  await SB.from('scores').insert({game_date:'2026-06-04',nickname,score});
+  const {data}=await SB.from('scores').select('nickname,score').eq('game_date','2026-06-04').order('score',{ascending:false}).limit(5);
+  let html=''; if(data)data.forEach((r,i)=>{ html+=`<tr><td>${['🥇','🥈','🥉','4위','5위'][i]}</td><td>${r.nickname}</td><td>${r.score}</td></tr>`; });
+  document.getElementById('lbTable').innerHTML=html;
+}
+let dragging=false, dragOffX=0;
+function getPaddleCenter(clientX){ return clientX/window.innerWidth*W; }
+canvas.addEventListener('mousedown',e=>{ dragging=true; dragOffX=e.clientX/window.innerWidth*W-paddleX; });
+canvas.addEventListener('mousemove',e=>{ if(dragging){ paddleX=e.clientX/window.innerWidth*W-dragOffX; paddleX=Math.max(0,Math.min(W-paddleW,paddleX)); } });
+canvas.addEventListener('mouseup',()=>dragging=false);
+canvas.addEventListener('touchstart',e=>{ e.preventDefault(); dragging=true; dragOffX=e.touches[0].clientX/window.innerWidth*W-paddleX; },{passive:false});
+canvas.addEventListener('touchmove',e=>{ e.preventDefault(); if(dragging){ paddleX=e.touches[0].clientX/window.innerWidth*W-dragOffX; paddleX=Math.max(0,Math.min(W-paddleW,paddleX)); } },{passive:false});
+canvas.addEventListener('touchend',e=>{ e.preventDefault(); dragging=false; },{passive:false});
+window.addEventListener('resize',()=>{ resize(); });
+resize(); ctx.fillStyle='#000010'; ctx.fillRect(0,0,W,H);
+</script>
+</body>
+</html>
