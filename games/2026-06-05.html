@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>도시 러너 2026</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#1a1a2e;font-family:'Arial',sans-serif;overflow:hidden;}
+canvas{position:fixed;top:0;left:0;z-index:1;width:100%;height:100%;}
+#nick-screen,#over-screen{position:fixed;z-index:10;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#1a1a2e,#16213e,#0f3460);}
+h1{color:#e94560;font-size:2.2em;margin-bottom:10px;text-shadow:0 0 20px #e94560;}
+.subtitle{color:#a8dadc;font-size:1em;margin-bottom:30px;}
+.nick-btns{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:24px;}
+.nick-btn{padding:14px 28px;font-size:1.1em;border:2px solid #e94560;background:transparent;color:#fff;border-radius:12px;cursor:pointer;transition:all .2s;}
+.nick-btn.selected,.nick-btn:hover{background:#e94560;color:#fff;transform:scale(1.05);}
+#start-btn,#retry-btn{padding:14px 40px;font-size:1.2em;background:#e94560;color:#fff;border:none;border-radius:14px;cursor:pointer;margin-top:10px;transition:transform .2s;}
+#start-btn:hover,#retry-btn:hover{transform:scale(1.07);}
+#hud{position:fixed;top:12px;left:0;width:100%;z-index:5;display:flex;justify-content:space-between;padding:0 16px;pointer-events:none;}
+#hud span{color:#fff;font-size:1.1em;background:rgba(0,0,0,.45);padding:4px 12px;border-radius:8px;}
+#over-screen h2{color:#e94560;font-size:1.8em;margin-bottom:6px;}
+#final-score{color:#a8dadc;font-size:1.3em;margin-bottom:18px;}
+#leaderboard{background:rgba(255,255,255,.07);border-radius:12px;padding:14px 28px;min-width:220px;margin-bottom:18px;}
+#leaderboard h3{color:#e94560;text-align:center;margin-bottom:10px;}
+.lb-row{color:#fff;font-size:1em;padding:3px 0;display:flex;justify-content:space-between;gap:20px;}
+</style>
+</head>
+<body>
+<div id="nick-screen">
+  <h1>🏙️ 도시 러너</h1>
+  <div class="subtitle">닉네임을 선택하세요</div>
+  <div class="nick-btns">
+    <button class="nick-btn" onclick="selectNick(this,'태형')">태형</button>
+    <button class="nick-btn" onclick="selectNick(this,'상이')">상이</button>
+    <button class="nick-btn" onclick="selectNick(this,'세준')">세준</button>
+    <button class="nick-btn" onclick="selectNick(this,'영근')">영근</button>
+  </div>
+  <button id="start-btn" onclick="startGame()">START</button>
+</div>
+<div id="hud" style="display:none;"><span id="s-score">점수: 0</span><span id="s-life">❤️❤️❤️</span></div>
+<canvas id="c"></canvas>
+<div id="over-screen" style="display:none;">
+  <h2>GAME OVER</h2>
+  <div id="final-score"></div>
+  <div id="leaderboard"><h3>🏆 리더보드</h3><div id="lb-list"></div></div>
+  <button id="retry-btn" onclick="location.reload()">다시하기</button>
+</div>
+<script>
+const SB=window.supabase.createClient('https://zypthfexxjcsguycjggr.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5cHRoZmV4eGpjc2d1eWNqZ2dyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3Njc2NzksImV4cCI6MjA5MjM0MzY3OX0.HaC4ltXQrO7_BQCeLqBVtvCBs4wL3Hzy6Ow_mO24vs0');
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+let nickname='',score=0,lives=3,running=false,raf;
+let player,obstacles,coins,buildings,bgX=0,speed=3,frame=0,invincible=0;
+function selectNick(el,n){document.querySelectorAll('.nick-btn').forEach(b=>b.classList.remove('selected'));el.classList.add('selected');nickname=n;}
+function resize(){canvas.width=window.innerWidth;canvas.height=window.innerHeight;}
+window.addEventListener('resize',resize);resize();
+function initGame(){
+  player={x:80,y:0,w:36,h:48,vy:0,onGround:false,color:'#4ecdc4'};
+  obstacles=[];coins=[];buildings=[];score=0;lives=3;speed=3;frame=0;invincible=0;
+  for(let i=0;i<6;i++)buildings.push({x:i*220+Math.random()*100,w:80+Math.random()*80,h:80+Math.random()*120,color:`hsl(${220+Math.random()*30},30%,${20+Math.random()*15}%)`});
+}
+const GH=()=>canvas.height*0.72;
+function spawnObstacle(){
+  const t=Math.random()<0.5?'car':'barrier';
+  obstacles.push({x:canvas.width+20,y:GH()-(t==='car'?38:48),w:t==='car'?60:28,h:t==='car'?38:48,type:t});
+}
+function spawnCoin(){coins.push({x:canvas.width+20,y:GH()-60-Math.random()*80,r:10,collected:false});}
+function startGame(){
+  if(!nickname){alert('닉네임을 선택하세요!');return;}
+  document.getElementById('nick-screen').style.display='none';
+  document.getElementById('hud').style.display='flex';
+  initGame();running=true;loop();
+}
+function jump(){if(player.onGround){player.vy=-15;player.onGround=false;}}
+canvas.addEventListener('touchstart',e=>{e.preventDefault();jump();},{passive:false});
+canvas.addEventListener('touchmove',e=>{e.preventDefault();},{passive:false});
+canvas.addEventListener('touchend',e=>{e.preventDefault();},{passive:false});
+canvas.addEventListener('mousedown',()=>jump());
+canvas.addEventListener('mousemove',()=>{});
+canvas.addEventListener('mouseup',()=>{});
+function updateHUD(){document.getElementById('s-score').textContent='점수: '+score;document.getElementById('s-life').textContent='❤️'.repeat(Math.max(0,lives));}
+function rect(x,y,w,h,c){ctx.fillStyle=c;ctx.fillRect(x,y,w,h);}
+function loop(){
+  if(!running)return;
+  raf=requestAnimationFrame(loop);
+  frame++;
+  if(frame%Math.max(60,120-Math.floor(score/100)*5)===0)spawnObstacle();
+  if(frame%90===0)spawnCoin();
+  if(frame%300===0&&speed<10)speed+=0.3;
+  const gh=GH();
+  player.vy+=0.7;player.y+=player.vy;
+  if(player.y>=gh-player.h){player.y=gh-player.h;player.vy=0;player.onGround=true;}
+  bgX-=speed*0.4;
+  buildings.forEach(b=>{b.x-=speed*0.3;if(b.x+b.w<0)b.x=canvas.width+Math.random()*100;});
+  obstacles.forEach(o=>{o.x-=speed;});
+  coins.forEach(c=>{c.x-=speed;});
+  obstacles=obstacles.filter(o=>o.x>-80);
+  coins=coins.filter(c=>c.x>-30);
+  if(invincible>0)invincible--;
+  if(invincible===0){
+    obstacles.forEach(o=>{
+      if(player.x+player.w-6>o.x&&player.x+6<o.x+o.w&&player.y+player.h-4>o.y&&player.y+4<o.y+o.h){
+        lives--;invincible=80;obstacles=obstacles.filter(ob=>ob!==o);
+        if(lives<=0){gameOver();return;}
+      }
+    });
+  }
+  coins.forEach(c=>{
+    if(!c.collected&&Math.hypot(player.x+player.w/2-c.x,player.y+player.h/2-c.y)<c.r+16){c.collected=true;score+=10;}
+  });
+  coins=coins.filter(c=>!c.collected);
+  score++;
+  updateHUD();
+  draw(gh);
+}
+function draw(gh){
+  ctx.fillStyle='#0d1b2a';ctx.fillRect(0,0,canvas.width,canvas.height);
+  // sky gradient
+  const sky=ctx.createLinearGradient(0,0,0,gh);
+  sky.addColorStop(0,'#0d1b2a');sky.addColorStop(1,'#1a3a5c');
+  ctx.fillStyle=sky;ctx.fillRect(0,0,canvas.width,gh);
+  // buildings
+  buildings.forEach(b=>{
+    rect(b.x,gh-b.h,b.w,b.h,b.color);
+    for(let r=0;r<Math.floor(b.h/20);r++)for(let cc=0;cc<Math.floor(b.w/16);cc++){
+      if(Math.random()<0.02||(frame<2)){ctx.fillStyle=Math.random()<0.7?'#ffe066':'transparent';}
+      if((b.x+cc*16+frame)%37<20)ctx.fillStyle='#ffe06688';
+      else ctx.fillStyle='#1a1a2e';
+      ctx.fillRect(b.x+cc*16+3,gh-b.h+r*20+4,8,10);
+    }
+  });
+  // ground
+  rect(0,gh,canvas.width,canvas.height-gh,'#2d2d44');
+  rect(0,gh,canvas.width,8,'#e94560');
+  // road lines
+  ctx.strokeStyle='#ffe06655';ctx.lineWidth=3;ctx.setLineDash([30,20]);
+  ctx.beginPath();ctx.moveTo(0,gh+20);ctx.lineTo(canvas.width,gh+20);ctx.stroke();ctx.setLineDash([]);
+  // obstacles
+  obstacles.forEach(o=>{
+    if(o.type==='car'){
+      rect(o.x,o.y+8,o.w,o.h-8,'#e94560');
+      rect(o.x+8,o.y,o.w-16,o.h-16,'#ff6b8a');
+      rect(o.x+2,o.y+o.h-10,14,10,'#111');
+      rect(o.x+o.w-16,o.y+o.h-10,14,10,'#111');
+    }else{
+      rect(o.x,o.y,o.w,o.h,'#f4a261');
+      rect(o.x+4,o.y+4,o.w-8,o.h-8,'#e76f51');
+    }
+  });
+  // coins
+  coins.forEach(c=>{ctx.fillStyle='#ffe066';ctx.beginPath();ctx.arc(c.x,c.y,c.r,0,Math.PI*2);ctx.fill();ctx.fillStyle='#ffb700';ctx.font='bold 10px Arial';ctx.textAlign='center';ctx.fillText('₩',c.x,c.y+4);});
+  // player
+  const px=invincible>0&&Math.floor(invincible/6)%2?'transparent':player.color;
+  if(px!=='transparent'){
+    rect(player.x,player.y,player.w,player.h,px);
+    rect(player.x+6,player.y-16,player.w-12,16,'#f4a261');
+    ctx.fillStyle='#fff';ctx.font='11px Arial';ctx.textAlign='center';
+    ctx.fillText(nickname,player.x+player.w/2,player.y-4);
+  }
+}
+async function gameOver(){
+  running=false;cancelAnimationFrame(raf);
+  document.getElementById('hud').style.display='none';
+  document.getElementById('over-screen').style.display='flex';
+  document.getElementById('final-score').textContent=nickname+' 님의 점수: '+score;
+  await SB.from('scores').insert({game_date:'2026-06-05',nickname,score});
+  const {data}=await SB.from('scores').select('nickname,score').eq('game_date','2026-06-05').order('score',{ascending:false}).limit(5);
+  const lb=document.getElementById('lb-list');lb.innerHTML='';
+  (data||[]).forEach((r,i)=>{const d=document.createElement('div');d.className='lb-row';d.innerHTML=`<span>${i+1}. ${r.nickname}</span><span>${r.score}</span>`;lb.appendChild(d);});
+}
+</script>
+</body>
+</html>
