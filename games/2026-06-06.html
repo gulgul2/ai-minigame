@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>바다 매치3</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#0a1628;font-family:'Arial',sans-serif;overflow:hidden;}
+canvas{position:fixed;top:0;left:0;z-index:1;width:100%;height:100%;}
+#nickScreen,#overScreen{position:fixed;z-index:10;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(180deg,#0a1628 0%,#0d2d5e 50%,#1a5276 100%);}
+.title{font-size:2.2em;color:#7ee8fa;text-shadow:0 0 20px #00bcd4;margin-bottom:10px;font-weight:bold;}
+.sub{font-size:1em;color:#a8d8ea;margin-bottom:30px;}
+.nick-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:24px;}
+.nick-btn{padding:14px 28px;border:2px solid #00bcd4;background:transparent;color:#7ee8fa;font-size:1.1em;border-radius:12px;cursor:pointer;transition:all 0.2s;}
+.nick-btn.selected,.nick-btn:hover{background:#00bcd4;color:#0a1628;font-weight:bold;}
+.start-btn,.retry-btn{padding:14px 40px;background:linear-gradient(135deg,#00bcd4,#0097a7);color:#fff;font-size:1.2em;border:none;border-radius:16px;cursor:pointer;margin-top:8px;box-shadow:0 4px 15px rgba(0,188,212,0.4);}
+.score-box{background:rgba(0,188,212,0.15);border:1px solid #00bcd4;border-radius:12px;padding:16px 32px;margin:12px 0;color:#7ee8fa;font-size:1.3em;text-align:center;}
+.lb-title{color:#a8d8ea;font-size:1em;margin:10px 0 6px;}
+.lb-item{color:#e0f7fa;font-size:0.95em;padding:4px 0;}
+.lb-item span{color:#00bcd4;font-weight:bold;}
+#hud{position:fixed;top:0;left:0;z-index:5;width:100%;display:flex;justify-content:space-between;align-items:center;padding:10px 16px;background:rgba(10,22,40,0.85);color:#7ee8fa;font-size:1em;pointer-events:none;}
+</style>
+</head>
+<body>
+<div id="nickScreen">
+  <div class="title">🌊 바다 매치3</div>
+  <div class="sub">2026-06-06</div>
+  <div class="nick-grid">
+    <button class="nick-btn" onclick="selNick(this,'태형')">태형</button>
+    <button class="nick-btn" onclick="selNick(this,'상이')">상이</button>
+    <button class="nick-btn" onclick="selNick(this,'세준')">세준</button>
+    <button class="nick-btn" onclick="selNick(this,'영근')">영근</button>
+  </div>
+  <button class="start-btn" onclick="startGame()">START</button>
+</div>
+<div id="hud" style="display:none"><span id="hudNick"></span><span>점수: <b id="hudScore">0</b></span><span>시간: <b id="hudTime">60</b>s</span></div>
+<canvas id="c"></canvas>
+<div id="overScreen" style="display:none">
+  <div class="title">게임 오버!</div>
+  <div class="score-box" id="finalScore"></div>
+  <div class="lb-title">🏆 오늘의 TOP 5</div>
+  <div id="lb"></div>
+  <button class="retry-btn" onclick="location.reload()">다시하기</button>
+</div>
+<script>
+const SB=window.supabase.createClient('https://zypthfexxjcsguycjggr.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5cHRoZmV4eGpjc2d1eWNqZ2dyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3Njc2NzksImV4cCI6MjA5MjM0MzY3OX0.HaC4ltXQrO7_BQCeLqBVtvCBs4wL3Hzy6Ow_mO24vs0');
+let nickname='';
+function selNick(el,n){document.querySelectorAll('.nick-btn').forEach(b=>b.classList.remove('selected'));el.classList.add('selected');nickname=n;}
+function startGame(){if(!nickname)return alert('닉네임을 선택해주세요!');document.getElementById('nickScreen').style.display='none';document.getElementById('hud').style.display='flex';document.getElementById('hudNick').textContent=nickname;init();}
+
+const cv=document.getElementById('c');const ctx=cv.getContext('2d');
+const COLS=7,ROWS=8,GEMS=['🐠','🐙','🦀','🐚','⭐','🦈','🐬'];
+let board=[],sel=null,score=0,timeLeft=60,timer=null,animating=false,particles=[];
+let drag=null,dragPos={x:0,y:0};
+
+function resize(){cv.width=window.innerWidth;cv.height=window.innerHeight;}
+window.addEventListener('resize',()=>{resize();});
+resize();
+
+function cellSize(){return Math.min(cv.width/COLS,cv.height/(ROWS+2))*0.9;}
+function offsetX(){return(cv.width-cellSize()*COLS)/2;}
+function offsetY(){return(cv.height-cellSize()*ROWS)/2+20;}
+
+function init(){board=[];for(let r=0;r<ROWS;r++){board[r]=[];for(let c=0;c<COLS;c++)board[r][c]=randGem();}while(findMatches().length>0)fillBoard();score=0;updateHUD();timeLeft=60;timer=setInterval(tick,1000);loop();}
+
+function randGem(){return GEMS[Math.floor(Math.random()*GEMS.length)];}
+function fillBoard(){for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++)board[r][c]=randGem();}
+function updateHUD(){document.getElementById('hudScore').textContent=score;document.getElementById('hudTime').textContent=timeLeft;}
+function tick(){timeLeft--;updateHUD();if(timeLeft<=0){clearInterval(timer);endGame();}}
+
+function getRC(px,py){const s=cellSize(),ox=offsetX(),oy=offsetY();const c=Math.floor((px-ox)/s),r=Math.floor((py-oy)/s);if(r>=0&&r<ROWS&&c>=0&&c<COLS)return{r,c};return null;}
+
+function findMatches(){const m=new Set();
+for(let r=0;r<ROWS;r++)for(let c=0;c<COLS-2;c++)if(board[r][c]&&board[r][c]===board[r][c+1]&&board[r][c]===board[r][c+2])for(let k=0;k<3;k++)m.add(`${r},${c+k}`);
+for(let c=0;c<COLS;c++)for(let r=0;r<ROWS-2;r++)if(board[r][c]&&board[r][c]===board[r+1][c]&&board[r][c]===board[r+2][c])for(let k=0;k<3;k++)m.add(`${r+k},${c}`);
+return[...m].map(s=>{const[r,c]=s.split(',').map(Number);return{r,c};});}
+
+function removeMatches(){const m=findMatches();if(m.length===0)return false;m.forEach(({r,c})=>{spawnParticles(r,c);board[r][c]=null;});score+=m.length*10;updateHUD();return true;}
+
+function dropDown(){for(let c=0;c<COLS;c++){let empty=ROWS-1;for(let r=ROWS-1;r>=0;r--){if(board[r][c]!==null){board[empty][c]=board[r][c];if(empty!==r)board[r][c]=null;empty--;}}}
+for(let c=0;c<COLS;c++)for(let r=0;r<ROWS;r++)if(board[r][c]===null)board[r][c]=randGem();}
+
+async function processMatches(){animating=true;let found=true;while(found){found=removeMatches();if(found){dropDown();await sleep(200);}}animating=false;}
+
+function swap(r1,c1,r2,c2){const t=board[r1][c1];board[r1][c1]=board[r2][c2];board[r2][c2]=t;}
+async function trySwap(r1,c1,r2,c2){if(Math.abs(r1-r2)+Math.abs(c1-c2)!==1)return;swap(r1,c1,r2,c2);if(findMatches().length>0){await processMatches();}else{swap(r1,c1,r2,c2);}}
+
+function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
+
+function spawnParticles(r,c){const s=cellSize(),ox=offsetX(),oy=offsetY();const x=ox+c*s+s/2,y=oy+r*s+s/2;for(let i=0;i<6;i++)particles.push({x,y,vx:(Math.random()-0.5)*4,vy:(Math.random()-0.5)*4,life:1,color:`hsl(${Math.random()*60+180},80%,60%)`});}
+
+function drawParticles(){particles=particles.filter(p=>{p.x+=p.vx;p.y+=p.vy;p.life-=0.04;if(p.life<=0)return false;ctx.globalAlpha=p.life;ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(p.x,p.y,4,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;return true;});}
+
+function draw(){ctx.clearRect(0,0,cv.width,cv.height);
+ctx.fillStyle='#0a1628';ctx.fillRect(0,0,cv.width,cv.height);
+const s=cellSize(),ox=offsetX(),oy=offsetY();
+for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){
+const x=ox+c*s,y=oy+r*s;
+ctx.fillStyle=((r+c)%2===0)?'rgba(0,188,212,0.1)':'rgba(0,150,180,0.05)';
+ctx.strokeStyle='rgba(0,188,212,0.2)';ctx.lineWidth=1;
+ctx.beginPath();ctx.roundRect(x+2,y+2,s-4,s-4,8);ctx.fill();ctx.stroke();
+if(sel&&sel.r===r&&sel.c===c){ctx.fillStyle='rgba(0,188,212,0.35)';ctx.beginPath();ctx.roundRect(x+2,y+2,s-4,s-4,8);ctx.fill();}
+if(board[r][c]){ctx.font=`${s*0.6}px serif`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(board[r][c],x+s/2,y+s/2);}
+}
+drawParticles();}
+
+function loop(){draw();requestAnimationFrame(loop);}
+
+function getEvtPos(e){const r=cv.getBoundingClientRect();const src=e.touches?e.touches[0]:e;return{x:(src.clientX-r.left)*(cv.width/r.width),y:(src.clientY-r.top)*(cv.height/r.height)};}
+
+function onDown(e){e.preventDefault();if(animating||timeLeft<=0)return;const{x,y}=getEvtPos(e);const rc=getRC(x,y);if(rc){sel=rc;drag={r:rc.r,c:rc.c};dragPos={x,y};}}
+function onMove(e){e.preventDefault();}
+async function onUp(e){e.preventDefault();if(!sel||!drag||animating||timeLeft<=0){sel=null;drag=null;return;}
+const{x,y}=getEvtPos(e);const rc=getRC(x,y);
+if(rc&&(rc.r!==sel.r||rc.c!==sel.c)){await trySwap(sel.r,sel.c,rc.r,rc.c);}
+sel=null;drag=null;}
+
+cv.addEventListener('mousedown',onDown);cv.addEventListener('mousemove',onMove);cv.addEventListener('mouseup',onUp);
+cv.addEventListener('touchstart',onDown,{passive:false});cv.addEventListener('touchmove',onMove,{passive:false});cv.addEventListener('touchend',onUp,{passive:false});
+
+async function endGame(){document.getElementById('hud').style.display='none';await SB.from('scores').insert({game_date:'2026-06-06',nickname,score});const{data}=await SB.from('scores').select('nickname,score').eq('game_date','2026-06-06').order('score',{ascending:false}).limit(5);document.getElementById('finalScore').textContent=`${nickname} | ${score}점`;let html='';if(data)data.forEach((d,i)=>{html+=`<div class="lb-item">${i+1}. ${d.nickname} <span>${d.score}점</span></div>`;});document.getElementById('lb').innerHTML=html;document.getElementById('overScreen').style.display='flex';}
+</script>
+</body>
+</html>
